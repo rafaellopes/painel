@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.painel-demo.json
+*.tmp
+.DS_Store
+board.json
+.claude-status.json

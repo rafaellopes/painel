@@ -1,0 +1,39 @@
+{
+  "title": "Exemplo — fechar contas do mês",
+  "meta": { "project": "exemplo", "updated_at": "2026-07-02 21:00" },
+  "blocks": [
+    { "id": "h1", "type": "heading", "text": "Objetivo" },
+    { "id": "m1", "type": "markdown",
+      "text": "Fechar as contas de junho: importar extratos, categorizar e gerar o relatório." },
+    { "id": "note", "type": "note", "tone": "info",
+      "text": "Há dois passos que só tu podes fazer (login no banco e no portal fiscal). Marca-os quando estiverem feitos." },
+
+    { "id": "h2", "type": "heading", "text": "Passos manuais (teus)" },
+    { "id": "cl", "type": "checklist", "title": "Faz e marca", "items": [
+      { "id": "c1", "text": "Exportar extrato do banco em `CSV`", "checked": false },
+      { "id": "c2", "text": "Descarregar faturas do portal fiscal", "checked": false },
+      { "id": "c3", "text": "Colocar os ficheiros em `~/Downloads/junho`", "checked": false }
+    ]},
+
+    { "id": "h3", "type": "heading", "text": "Progresso do agente" },
+    { "id": "tk", "type": "tasks", "title": "Pipeline", "items": [
+      { "text": "Ler configuração de categorias", "status": "done" },
+      { "text": "Importar extratos", "status": "wip" },
+      { "text": "Categorizar transações", "status": "pending" },
+      { "text": "Gerar relatório PDF", "status": "pending" }
+    ]},
+
+    { "id": "h4", "type": "heading", "text": "Decisões" },
+    { "id": "q1", "type": "question",
+      "prompt": "Alguma categoria nova para transações que não reconheço?", "answer": null },
+    { "id": "ch", "type": "choice", "prompt": "Formato do relatório final?",
+      "options": ["PDF", "Excel", "Ambos"], "selected": null },
+    { "id": "ap", "type": "approval",
+      "prompt": "Posso arquivar os extratos originais depois de processar?", "decision": null },
+
+    { "id": "lg", "type": "log", "title": "Registo", "entries": [
+      { "ts": "20:58", "text": "Sessão iniciada" },
+      { "ts": "20:59", "text": "Configuração de categorias carregada" }
+    ]}
+  ]
+}
