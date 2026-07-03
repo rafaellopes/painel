@@ -142,7 +142,11 @@ def _block_html(b: dict) -> str:
             text = e(it.get("text", ""))
             tc = "done-text" if st == "done" else ("skip-text" if st == "skipped" else "")
             thread = it.get("thread", [])
+            unread = (bool(thread) and thread[-1].get("from") == "agent"
+                      and it.get("seen", 0) < len(thread))
             badge = f' ({len(thread)})' if thread else ""
+            reply_cls = " has-reply" if unread else ""
+            reply_dot = '<span class="reply-dot"></span>' if unread else ""
             thread_msgs = "".join(
                 f'<div class="thread-msg {e(m.get("from",""))}">'
                 f'<b>{"Tu" if m.get("from") == "user" else "Agente"}:</b> {_md_inline(e(m.get("text","")))}</div>'
@@ -155,7 +159,7 @@ def _block_html(b: dict) -> str:
                 <span class="plan-actions">
                   <button class="ico play" title="Começar agora" onclick="planPlay('{bid}','{iid}')">&#9654;</button>
                   <button class="ico" title="Editar" onclick="planToggleEdit('{bid}','{iid}')">&#9998;</button>
-                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('{bid}','{iid}')">&#128172;{badge}</button>
+                  <button class="ico{reply_cls}" title="{"Resposta nova do agente!" if unread else "Perguntar / discutir este passo"}" onclick="planToggleThread('{bid}','{iid}')">&#128172;{badge}{reply_dot}</button>
                   <button class="ico" title="Saltar" onclick="planSkip('{bid}','{iid}')">&#9197;</button>
                   <button class="ico" title="Mover para cima" onclick="planMove('{bid}','{iid}','up')" {"disabled" if idx == 0 else ""}>&#9650;</button>
                   <button class="ico" title="Mover para baixo" onclick="planMove('{bid}','{iid}','down')" {"disabled" if idx == len(items) - 1 else ""}>&#9660;</button>
@@ -281,8 +285,36 @@ def _block_html(b: dict) -> str:
     return f'<div class="card muted">bloco desconhecido: {e(t)}</div>'
 
 
+def _needs_user(board: dict) -> list:
+    """Everything currently waiting on the human: (block_id, short label)."""
+    out = []
+    for b in board.get("blocks", []):
+        t, bid = b.get("type"), b.get("id", "")
+        if t == "question" and b.get("answer") in (None, ""):
+            out.append((bid, "Pergunta por responder"))
+        elif t == "choice" and b.get("selected") in (None, ""):
+            out.append((bid, "Escolha pendente"))
+        elif t == "approval" and not b.get("decision"):
+            out.append((bid, "Aprovação pendente"))
+        elif t == "form" and not b.get("submitted"):
+            out.append((bid, "Formulário por preencher"))
+        elif t == "checklist":
+            n = sum(1 for it in b.get("items", []) if not it.get("checked"))
+            if n:
+                out.append((bid, f"{n} passo{'s' if n > 1 else ''} manua{'is' if n > 1 else 'l'} por marcar"))
+        elif t == "plan":
+            for it in b.get("items", []):
+                th = it.get("thread", [])
+                if th and th[-1].get("from") == "agent" and it.get("seen", 0) < len(th):
+                    out.append((bid, f"Resposta nova em “{it.get('text', '')[:40]}”"))
+    return out
+
+
 def render(board: dict) -> str:
-    blocks = "".join(_block_html(b) for b in board.get("blocks", []))
+    blocks = "".join(
+        f'<div id="blk-{e(b.get("id", ""))}">{_block_html(b)}</div>'
+        for b in board.get("blocks", [])
+    )
     meta = board.get("meta", {})
     metaline = " · ".join(
         filter(None, [
@@ -290,7 +322,17 @@ def render(board: dict) -> str:
             f'Atualizado: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
         ])
     )
-    return _PAGE.format(title=e(board.get("title", "pAInel")), metaline=metaline, blocks=blocks)
+    pending = _needs_user(board)
+    if pending:
+        links = " · ".join(f'<a href="#blk-{e(bid)}">{e(label)}</a>' for bid, label in pending)
+        attention = (
+            f'<div class="attention"><span class="attention-count">{len(pending)}</span> '
+            f'à tua espera: {links}</div>'
+        )
+    else:
+        attention = ""
+    return _PAGE.format(title=e(board.get("title", "pAInel")), metaline=metaline,
+                        attention=attention, blocks=blocks)
 
 
 # --------------------------------------------------------------------------- #
@@ -336,8 +378,10 @@ class _Handler(BaseHTTPRequestHandler):
             data = {}
         self._apply(data)
         # Emit exactly one JSONL line per interaction so the agent can react.
-        sys.stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
-        sys.stdout.flush()
+        # plan_seen is UI housekeeping (badge cleared) — not worth waking the agent.
+        if data.get("event") != "plan_seen":
+            sys.stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
+            sys.stdout.flush()
         self._send(200, b'{"ok":true}', "application/json")
 
     def _apply(self, data: dict) -> None:
@@ -386,6 +430,11 @@ class _Handler(BaseHTTPRequestHandler):
                     it = _find_item(blk, data.get("item"))
                     if it is not None:
                         it.setdefault("thread", []).append({"from": "user", "text": data.get("value", "")})
+                        it["seen"] = len(it["thread"])
+                elif ev == "plan_seen":
+                    it = _find_item(blk, data.get("item"))
+                    if it is not None:
+                        it["seen"] = len(it.get("thread", []))
             save_board(self.board_path, board)
 
 
@@ -498,8 +547,22 @@ button.no {{ background:var(--blocked); color:#2a0a0a; margin-left:.5rem; }}
 .opts {{ display:flex; flex-wrap:wrap; gap:.2rem; }}
 .answer {{ color:var(--accent); font-size:.9rem; margin-top:.3rem; }}
 .answered {{ opacity:.72; }}
+.attention {{ position:sticky; top:0; z-index:10; background:var(--wip); color:#1a1a1a;
+  padding:.55rem .9rem; border-radius:0 0 10px 10px; font-size:.88rem; font-weight:500;
+  margin:-2rem -1.25rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.25); }}
+.attention a {{ color:inherit; text-decoration:underline; font-weight:400; }}
+.attention-count {{ display:inline-block; background:#1a1a1a; color:var(--wip);
+  border-radius:50%; min-width:1.4rem; height:1.4rem; line-height:1.4rem;
+  text-align:center; font-weight:700; margin-right:.35rem; }}
+button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
+  animation:pulse 1.6s ease-in-out infinite; position:relative; }}
+.reply-dot {{ display:inline-block; width:7px; height:7px; border-radius:50%;
+  background:var(--blocked); margin-left:.25rem; vertical-align:top; }}
+@keyframes pulse {{ 0%,100% {{ box-shadow:0 0 0 0 rgba(125,211,252,.5); }}
+  50% {{ box-shadow:0 0 0 5px rgba(125,211,252,0); }} }}
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
 </style></head><body>
+{attention}
 <header>
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
@@ -541,15 +604,31 @@ function planSaveEdit(bid, item) {{
   const v = document.getElementById('plan-ta-' + bid + '-' + item).value;
   send({{event:'plan_edit', block:bid, item, value:v}}).then(reloadSoon);
 }}
+function _openThreads() {{
+  try {{ return new Set(JSON.parse(sessionStorage.getItem('openThreads') || '[]')); }}
+  catch (e) {{ return new Set(); }}
+}}
+function _saveThreads(s) {{ sessionStorage.setItem('openThreads', JSON.stringify([...s])); }}
 function planToggleThread(bid, item) {{
-  const box = document.getElementById('plan-thread-' + bid + '-' + item);
-  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+  const key = bid + '-' + item;
+  const box = document.getElementById('plan-thread-' + key);
+  const opening = (box.style.display === 'none' || !box.style.display);
+  box.style.display = opening ? 'block' : 'none';
+  const open = _openThreads();
+  if (opening) open.add(key); else open.delete(key);
+  _saveThreads(open);
+  if (opening) send({{event:'plan_seen', block:bid, item}});  // clears the unread badge
 }}
 function planSendComment(bid, item) {{
   const ta = document.getElementById('plan-comment-' + bid + '-' + item);
   const v = ta.value;
   if (!v.trim()) return;
   send({{event:'plan_comment', block:bid, item, value:v}}).then(reloadSoon);
+}}
+// Re-open threads the user had open before the last reload.
+for (const key of _openThreads()) {{
+  const box = document.getElementById('plan-thread-' + key);
+  if (box) box.style.display = 'block';
 }}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic
