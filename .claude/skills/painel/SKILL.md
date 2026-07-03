@@ -26,17 +26,20 @@ Don't use it for one-shot answers or quick chats.
    if you need the user to do or decide anything — the relevant interactive
    blocks.
 
-2. **Serve** it in the background and open it:
+2. **Open** it — one idempotent command, no port bookkeeping needed:
    ```bash
-   python3 -m painel serve board.json --port 8765 --open
+   painel open              # creates the board if missing, starts the server, opens the browser
    ```
-   (If `painel` isn't installed as a package, run the server file directly:
-   `python3 /path/to/painel/painel/server.py`… — or vendor the single
-   `server.py` into the project.)
+   Calling it again just re-opens the tab if a server is already running for
+   that board — safe to call from anywhere, including directly by the user.
+   Check `painel status` / stop with `painel stop`. If `painel` isn't on PATH,
+   fall back to `python3 -m painel serve board.json --port <N> --open`
+   (foreground) or vendor the single `painel/server.py` into the project.
 
-3. **Watch** the server's stdout for interactions. In Claude Code, attach a
-   background monitor to the serve command's output file, filtering to JSON
-   lines (they start with `{`). Each line is one interaction event.
+3. **Watch** for interactions. `painel open` logs the server's stdout to
+   `<board>.log` in the project — attach a background monitor to that file,
+   filtering to JSON lines (they start with `{`). Each line is one interaction
+   event.
 
 ## React to events
 

@@ -64,16 +64,30 @@ lines can use pAInel.
 
 ## Quick start
 
-No install needed — just Python 3 (standard library only).
+Just Python 3 (standard library only, no runtime dependencies).
 
 ```bash
-# See everything it can do:
-python -m painel demo
-
-# Start a board for your own session:
-python -m painel init board.json
-python -m painel serve board.json --port 8765 --open
+pip install -e .          # or: pipx install .  /  see "Installing" below
 ```
+
+Then, in any project directory, **one command**:
+
+```bash
+painel open
+```
+
+That's it. First run creates `.painel-board.json` and opens the dashboard in
+your browser. Run it again anytime — it's idempotent: if a board is already
+running it just re-opens the tab instead of starting a second server. Useful
+companions:
+
+```bash
+painel status   # is it running? where?
+painel stop     # stop the server for this board
+painel demo     # see every block type in a showcase board
+```
+
+No need to remember ports or ask your agent to start it for you.
 
 Then point your agent at `board.json`. When someone interacts, the server prints
 a line like:
@@ -94,6 +108,20 @@ your project and the agent learns to:
 3. Watch for your interactions and react — all on its own.
 
 See [`.claude/skills/painel/SKILL.md`](.claude/skills/painel/SKILL.md).
+
+## Installing
+
+pAInel has zero runtime dependencies, but `pip install` on newer macOS/Homebrew
+Python refuses system-wide installs (PEP 668). The clean way:
+
+```bash
+python3 -m venv ~/.painel-venv
+~/.painel-venv/bin/pip install -e /path/to/painel
+mkdir -p ~/.local/bin
+ln -sf ~/.painel-venv/bin/painel ~/.local/bin/painel   # make sure ~/.local/bin is on PATH
+```
+
+Or, if you have `pipx`: `pipx install /path/to/painel`.
 
 ## Board schema
 

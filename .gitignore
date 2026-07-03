@@ -1,7 +1,13 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .painel-demo.json
 *.tmp
 .DS_Store
 board.json
 .claude-status.json
+.painel-board.json
+*.painel-board.json.pid
+*.painel-board.json.log
+*.pid
+*.log

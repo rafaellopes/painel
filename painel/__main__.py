@@ -2,16 +2,26 @@
 Command-line entry point for pAInel.
 
 Usage:
-    python -m painel serve <board.json> [--port 8765] [--open]
-    python -m painel init  <board.json>          # write a starter board
+    python -m painel open   [board.json]          # the one command people actually type
+    python -m painel stop   [board.json]
+    python -m painel status [board.json]
+    python -m painel serve  <board.json> [--port 8765] [--open]
+    python -m painel init   <board.json>          # write a starter board
     python -m painel demo                         # serve a showcase board
 """
 import argparse
+import errno
 import json
 import os
+import socket
+import subprocess
 import sys
+import time
+import webbrowser
 
-from .server import serve, save_board
+from .server import serve, save_board, load_board
+
+DEFAULT_BOARD = ".painel-board.json"
 
 STARTER = {
     "title": "pAInel",
@@ -69,11 +79,116 @@ def _demo_board() -> dict:
     }
 
 
+def _pidfile(board: str) -> str:
+    return board + ".pid"
+
+
+def _port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        return s.connect_ex(("127.0.0.1", port)) != 0
+
+
+def _find_free_port(start: int = 8765, tries: int = 50) -> int:
+    port = start
+    for _ in range(tries):
+        if _port_free(port):
+            return port
+        port += 1
+    raise RuntimeError("nenhuma porta livre encontrada")
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except OSError as exc:
+        return exc.errno == errno.EPERM  # exists but owned by someone else
+    return True
+
+
+def _read_pidfile(board: str) -> dict | None:
+    pf = _pidfile(board)
+    if not os.path.exists(pf):
+        return None
+    try:
+        with open(pf, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def cmd_open(board: str, port: int | None) -> int:
+    if not os.path.exists(board):
+        save_board(board, STARTER)
+        print(f"board criado: {board}")
+
+    info = _read_pidfile(board)
+    if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
+        url = f"http://127.0.0.1:{info['port']}/"
+        print(f"pAInel já está a correr: {url}")
+        webbrowser.open(url)
+        return 0
+
+    chosen_port = port or _find_free_port()
+    log_path = board + ".log"
+    log_fh = open(log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "painel", "serve", board, "--port", str(chosen_port)],
+        stdout=log_fh, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    with open(_pidfile(board), "w", encoding="utf-8") as fh:
+        json.dump({"pid": proc.pid, "port": chosen_port}, fh)
+
+    url = f"http://127.0.0.1:{chosen_port}/"
+    for _ in range(50):
+        if not _port_free(chosen_port):
+            break
+        time.sleep(0.1)
+    webbrowser.open(url)
+    print(f"pAInel aberto: {url}  (para parar: python3 -m painel stop {board})")
+    return 0
+
+
+def cmd_stop(board: str) -> int:
+    info = _read_pidfile(board)
+    if not info:
+        print("não há nenhum pAInel a correr para este board.")
+        return 0
+    pid = info.get("pid")
+    if pid and _pid_alive(pid):
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            pass
+    os.remove(_pidfile(board))
+    print("parado.")
+    return 0
+
+
+def cmd_status(board: str) -> int:
+    info = _read_pidfile(board)
+    if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
+        print(f"a correr em http://127.0.0.1:{info['port']}/  (pid {info['pid']})")
+    else:
+        print("parado.")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="painel", description="pAInel — second interface for CLI agents")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    ps = sub.add_parser("serve", help="serve a board.json")
+    po = sub.add_parser("open", help="start (if needed) and open the board in the browser — the one command to remember")
+    po.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+    po.add_argument("--port", type=int, default=None)
+
+    pstop = sub.add_parser("stop", help="stop the running server for this board")
+    pstop.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+
+    pstat = sub.add_parser("status", help="check if a board's server is running")
+    pstat.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+
+    ps = sub.add_parser("serve", help="serve a board.json (blocking, foreground)")
     ps.add_argument("board")
     ps.add_argument("--port", type=int, default=8765)
     ps.add_argument("--open", action="store_true", help="open the browser")
@@ -86,6 +201,12 @@ def main(argv=None) -> int:
 
     args = p.parse_args(argv)
 
+    if args.cmd == "open":
+        return cmd_open(args.board, args.port)
+    if args.cmd == "stop":
+        return cmd_stop(args.board)
+    if args.cmd == "status":
+        return cmd_status(args.board)
     if args.cmd == "serve":
         serve(args.board, port=args.port, open_browser=args.open)
         return 0
