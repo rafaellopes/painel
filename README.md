@@ -32,6 +32,7 @@ what interaction it hands back:
 | Block | What you see | What the agent gets back |
 |-------|--------------|--------------------------|
 | `checklist` | Checkboxes for **your** manual steps | An event the moment you tick one |
+| `plan` | A steerable plan: ▶ play, ✎ edit, ⏭ skip, ▲▼ reorder each step | Jump the queue, rewrite a step, or drop it — live |
 | `tasks` | The agent's own progress (done / doing / blocked) | — (read-only) |
 | `question` | A prompt with a text box | Your typed answer |
 | `choice` | A prompt with option buttons | The option you picked |

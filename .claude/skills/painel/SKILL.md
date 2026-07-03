@@ -45,12 +45,22 @@ Don't use it for one-shot answers or quick chats.
 
 Events look like:
 ```json
-{"event":"check",   "block":"cl", "item":"c1", "checked":true}
-{"event":"answer",  "block":"q1", "value":"..."}
-{"event":"choose",  "block":"ch", "value":"PDF"}
-{"event":"approve", "block":"ap", "decision":"approved", "comment":"..."}
-{"event":"submit",  "block":"fm", "values":{"nome":"Ana"}}
+{"event":"check",     "block":"cl", "item":"c1", "checked":true}
+{"event":"answer",    "block":"q1", "value":"..."}
+{"event":"choose",    "block":"ch", "value":"PDF"}
+{"event":"approve",   "block":"ap", "decision":"approved", "comment":"..."}
+{"event":"submit",    "block":"fm", "values":{"nome":"Ana"}}
+{"event":"plan_play", "block":"pl", "item":"p2"}
+{"event":"plan_edit", "block":"pl", "item":"p3", "value":"new text"}
+{"event":"plan_skip", "block":"pl", "item":"p1"}
+{"event":"plan_move", "block":"pl", "item":"p3", "direction":"up"}
 ```
+
+`plan_play` is a priority override: the user is telling you to drop what's queued and
+start that specific step now. The server already flips its status to `wip` for you —
+your job is to actually act on it. `plan_move`/`plan_edit`/`plan_skip` are already
+applied to the board by the server; just notice them and adjust your own work
+accordingly (e.g. don't keep working on a step the user just skipped).
 
 When an event arrives:
 - Do the thing it unblocks (continue the pipeline, use the answer, honor the
@@ -78,7 +88,8 @@ Block types:
 - `heading` — `{ "type":"heading", "text":"..." }`
 - `markdown` — `{ "type":"markdown", "text":"supports **bold**, \`code\`, line breaks" }`
 - `note` — `{ "type":"note", "tone":"info|ok|warn|danger", "text":"..." }`
-- `tasks` — your progress. `{ "type":"tasks", "title":"...", "items":[{"text":"...","status":"done|wip|pending|blocked"}] }`
+- `tasks` — your progress, read-only. `{ "type":"tasks", "title":"...", "items":[{"text":"...","status":"done|wip|pending|blocked"}] }`
+- `plan` — a plan the user can steer, not just watch. Each item needs a stable `id`. `{ "type":"plan", "title":"...", "items":[{"id":"p1","text":"...","status":"pending|wip|done|blocked|skipped"}] }`. Per item the user can: ▶ **play** (jump the queue — tells you to work on it now), ✎ **edit** the text, ⏭ **skip**, ▲▼ **reorder**. Prefer `plan` over `tasks` whenever the user might want to reprioritize or rewrite a step; use plain `tasks` only for steps that are purely internal bookkeeping.
 - `checklist` — the user's manual steps. `{ "type":"checklist", "title":"...", "items":[{"id":"c1","text":"...","checked":false}] }`
 - `question` — `{ "type":"question", "prompt":"...", "answer":null }`
 - `choice` — `{ "type":"choice", "prompt":"...", "options":["A","B"], "selected":null }`

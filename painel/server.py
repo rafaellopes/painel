@@ -59,6 +59,13 @@ def _find(board: dict, block_id: str) -> dict | None:
     return None
 
 
+def _find_item(block: dict, item_id: str) -> dict | None:
+    for it in block.get("items", []):
+        if str(it.get("id")) == str(item_id):
+            return it
+    return None
+
+
 # --------------------------------------------------------------------------- #
 # Rendering                                                                    #
 # --------------------------------------------------------------------------- #
@@ -120,6 +127,44 @@ def _block_html(b: dict) -> str:
             f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div></div>'
             f'<ul class="tasks">{"".join(rows)}</ul>'
             f'<div class="muted small">{done}/{total} concluídas</div></div>'
+        )
+
+    if t == "plan":
+        items = b.get("items", [])
+        active = [it for it in items if it.get("status") != "skipped"]
+        done = sum(1 for it in active if it.get("status") == "done")
+        total = len(active)
+        pct = int(done / total * 100) if total else 0
+        rows = []
+        for idx, it in enumerate(items):
+            iid = e(it.get("id", ""))
+            st = it.get("status", "pending")
+            text = e(it.get("text", ""))
+            tc = "done-text" if st == "done" else ("skip-text" if st == "skipped" else "")
+            rows.append(f'''<li class="plan-item">
+              <div class="plan-row">
+                <span class="dot {e(st)}"></span>
+                <span class="plan-text {tc}">{_md_inline(text)}</span>
+                <span class="plan-actions">
+                  <button class="ico play" title="Começar agora" onclick="planPlay('{bid}','{iid}')">&#9654;</button>
+                  <button class="ico" title="Editar" onclick="planToggleEdit('{bid}','{iid}')">&#9998;</button>
+                  <button class="ico" title="Saltar" onclick="planSkip('{bid}','{iid}')">&#9197;</button>
+                  <button class="ico" title="Mover para cima" onclick="planMove('{bid}','{iid}','up')" {"disabled" if idx == 0 else ""}>&#9650;</button>
+                  <button class="ico" title="Mover para baixo" onclick="planMove('{bid}','{iid}','down')" {"disabled" if idx == len(items) - 1 else ""}>&#9660;</button>
+                </span>
+              </div>
+              <div id="plan-edit-{bid}-{iid}" class="plan-edit" style="display:none">
+                <textarea id="plan-ta-{bid}-{iid}" data-orig="{text}">{text}</textarea>
+                <button onclick="planSaveEdit('{bid}','{iid}')">Guardar</button>
+              </div>
+            </li>''')
+        title = e(b.get("title", "Plano"))
+        return (
+            f'<div class="card"><h3>{title}</h3>'
+            f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div></div>'
+            f'<ul class="plan-items">{"".join(rows)}</ul>'
+            f'<div class="muted small">{done}/{total} concluídos'
+            f'{" · " + str(len(items) - total) + " saltados" if len(items) > total else ""}</div></div>'
         )
 
     if t == "checklist":
@@ -305,6 +350,25 @@ class _Handler(BaseHTTPRequestHandler):
                         if f.get("id") in vals:
                             f["value"] = vals[f["id"]]
                     blk["submitted"] = True
+                elif ev == "plan_edit":
+                    it = _find_item(blk, data.get("item"))
+                    if it is not None:
+                        it["text"] = data.get("value", "")
+                elif ev == "plan_play":
+                    it = _find_item(blk, data.get("item"))
+                    if it is not None:
+                        it["status"] = "wip"
+                elif ev == "plan_skip":
+                    it = _find_item(blk, data.get("item"))
+                    if it is not None:
+                        it["status"] = "skipped"
+                elif ev == "plan_move":
+                    items = blk.get("items", [])
+                    idx = next((i for i, x in enumerate(items) if str(x.get("id")) == str(data.get("item"))), None)
+                    if idx is not None:
+                        j = idx - 1 if data.get("direction") == "up" else idx + 1
+                        if 0 <= j < len(items):
+                            items[idx], items[j] = items[j], items[idx]
             save_board(self.board_path, board)
 
 
@@ -373,7 +437,21 @@ ul.tasks li {{ padding:.32rem 0; }}
 .dot {{ display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:.55rem; }}
 .dot.done {{ background:var(--ok); }} .dot.wip {{ background:var(--wip); }}
 .dot.pending {{ background:var(--pending); }} .dot.blocked {{ background:var(--blocked); }}
+.dot.skipped {{ background:transparent; border:1px solid var(--muted); }}
 .done-text {{ text-decoration:line-through; color:var(--muted); }}
+.skip-text {{ text-decoration:line-through; color:var(--muted); font-style:italic; }}
+ul.plan-items li.plan-item {{ padding:.45rem 0; border-bottom:1px solid var(--border); }}
+ul.plan-items li.plan-item:last-child {{ border-bottom:none; }}
+.plan-row {{ display:flex; align-items:center; gap:.3rem; }}
+.plan-text {{ flex:1; }}
+.plan-actions {{ display:flex; gap:.15rem; flex:none; }}
+button.ico {{ margin:0; padding:.25rem .4rem; background:transparent; color:var(--muted);
+  border:1px solid var(--border); font-size:.75rem; line-height:1; }}
+button.ico:hover {{ color:var(--text); border-color:var(--accent); }}
+button.ico.play {{ color:var(--ok); border-color:var(--ok); }}
+button.ico:disabled {{ opacity:.3; cursor:default; }}
+button.ico:disabled:hover {{ color:var(--muted); border-color:var(--border); }}
+.plan-edit {{ margin-top:.4rem; padding-left:1.4rem; }}
 ul.checklist li {{ padding:.4rem 0; border-bottom:1px solid var(--border); }}
 ul.checklist li:last-child {{ border-bottom:none; }}
 ul.checklist label {{ display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; }}
@@ -428,6 +506,17 @@ function submitForm(id, ids) {{
   const values = {{}};
   ids.forEach(fid => {{ const el = document.getElementById('fld-'+id+'-'+fid); if (el) values[fid]=el.value; }});
   send({{event:'submit', block:id, values}}).then(reloadSoon);
+}}
+function planPlay(bid, item) {{ send({{event:'plan_play', block:bid, item}}).then(reloadSoon); }}
+function planSkip(bid, item) {{ send({{event:'plan_skip', block:bid, item}}).then(reloadSoon); }}
+function planMove(bid, item, direction) {{ send({{event:'plan_move', block:bid, item, direction}}).then(reloadSoon); }}
+function planToggleEdit(bid, item) {{
+  const box = document.getElementById('plan-edit-' + bid + '-' + item);
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+}}
+function planSaveEdit(bid, item) {{
+  const v = document.getElementById('plan-ta-' + bid + '-' + item).value;
+  send({{event:'plan_edit', block:bid, item, value:v}}).then(reloadSoon);
 }}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic
