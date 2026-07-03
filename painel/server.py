@@ -141,6 +141,13 @@ def _block_html(b: dict) -> str:
             st = it.get("status", "pending")
             text = e(it.get("text", ""))
             tc = "done-text" if st == "done" else ("skip-text" if st == "skipped" else "")
+            thread = it.get("thread", [])
+            badge = f' ({len(thread)})' if thread else ""
+            thread_msgs = "".join(
+                f'<div class="thread-msg {e(m.get("from",""))}">'
+                f'<b>{"Tu" if m.get("from") == "user" else "Agente"}:</b> {_md_inline(e(m.get("text","")))}</div>'
+                for m in thread
+            )
             rows.append(f'''<li class="plan-item">
               <div class="plan-row">
                 <span class="dot {e(st)}"></span>
@@ -148,6 +155,7 @@ def _block_html(b: dict) -> str:
                 <span class="plan-actions">
                   <button class="ico play" title="Começar agora" onclick="planPlay('{bid}','{iid}')">&#9654;</button>
                   <button class="ico" title="Editar" onclick="planToggleEdit('{bid}','{iid}')">&#9998;</button>
+                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('{bid}','{iid}')">&#128172;{badge}</button>
                   <button class="ico" title="Saltar" onclick="planSkip('{bid}','{iid}')">&#9197;</button>
                   <button class="ico" title="Mover para cima" onclick="planMove('{bid}','{iid}','up')" {"disabled" if idx == 0 else ""}>&#9650;</button>
                   <button class="ico" title="Mover para baixo" onclick="planMove('{bid}','{iid}','down')" {"disabled" if idx == len(items) - 1 else ""}>&#9660;</button>
@@ -156,6 +164,11 @@ def _block_html(b: dict) -> str:
               <div id="plan-edit-{bid}-{iid}" class="plan-edit" style="display:none">
                 <textarea id="plan-ta-{bid}-{iid}" data-orig="{text}">{text}</textarea>
                 <button onclick="planSaveEdit('{bid}','{iid}')">Guardar</button>
+              </div>
+              <div id="plan-thread-{bid}-{iid}" class="plan-thread" style="display:none">
+                {f'<div class="thread-msgs">{thread_msgs}</div>' if thread else ''}
+                <textarea id="plan-comment-{bid}-{iid}" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
+                <button onclick="planSendComment('{bid}','{iid}')">Enviar</button>
               </div>
             </li>''')
         title = e(b.get("title", "Plano"))
@@ -369,6 +382,10 @@ class _Handler(BaseHTTPRequestHandler):
                         j = idx - 1 if data.get("direction") == "up" else idx + 1
                         if 0 <= j < len(items):
                             items[idx], items[j] = items[j], items[idx]
+                elif ev == "plan_comment":
+                    it = _find_item(blk, data.get("item"))
+                    if it is not None:
+                        it.setdefault("thread", []).append({"from": "user", "text": data.get("value", "")})
             save_board(self.board_path, board)
 
 
@@ -452,6 +469,12 @@ button.ico.play {{ color:var(--ok); border-color:var(--ok); }}
 button.ico:disabled {{ opacity:.3; cursor:default; }}
 button.ico:disabled:hover {{ color:var(--muted); border-color:var(--border); }}
 .plan-edit {{ margin-top:.4rem; padding-left:1.4rem; }}
+.plan-thread {{ margin-top:.4rem; padding-left:1.4rem; }}
+.thread-msgs {{ margin-bottom:.5rem; display:flex; flex-direction:column; gap:.35rem; }}
+.thread-msg {{ padding:.4rem .6rem; border-radius:8px; font-size:.85rem; max-width:85%; }}
+.thread-msg.user {{ background:var(--border); align-self:flex-end; }}
+.thread-msg.agent {{ background:rgba(125,211,252,.15); align-self:flex-start; }}
+.thread-msg b {{ font-weight:600; }}
 ul.checklist li {{ padding:.4rem 0; border-bottom:1px solid var(--border); }}
 ul.checklist li:last-child {{ border-bottom:none; }}
 ul.checklist label {{ display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; }}
@@ -517,6 +540,16 @@ function planToggleEdit(bid, item) {{
 function planSaveEdit(bid, item) {{
   const v = document.getElementById('plan-ta-' + bid + '-' + item).value;
   send({{event:'plan_edit', block:bid, item, value:v}}).then(reloadSoon);
+}}
+function planToggleThread(bid, item) {{
+  const box = document.getElementById('plan-thread-' + bid + '-' + item);
+  box.style.display = (box.style.display === 'none' || !box.style.display) ? 'block' : 'none';
+}}
+function planSendComment(bid, item) {{
+  const ta = document.getElementById('plan-comment-' + bid + '-' + item);
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({{event:'plan_comment', block:bid, item, value:v}}).then(reloadSoon);
 }}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic
