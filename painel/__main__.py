@@ -54,6 +54,13 @@ def _demo_board() -> dict:
                 {"id": "c2", "text": "Descarregar o **PDF** do relatório", "checked": False},
                 {"id": "c3", "text": "Colocar o ficheiro em `~/Downloads`", "checked": False},
             ]},
+            {"id": "h2b", "type": "heading", "text": "Um plano que se controla, não só se lê"},
+            {"id": "pl", "type": "plan", "title": "Plano", "items": [
+                {"id": "p1", "text": "Ler configuração", "status": "done"},
+                {"id": "p2", "text": "Processar ficheiro", "status": "wip"},
+                {"id": "p3", "text": "Gerar relatório", "status": "pending"},
+                {"id": "p4", "text": "Enviar por email", "status": "pending"},
+            ]},
             {"id": "h3", "type": "heading", "text": "Progresso do agente"},
             {"id": "tk", "type": "tasks", "title": "Pipeline", "items": [
                 {"text": "Ler configuração", "status": "done"},

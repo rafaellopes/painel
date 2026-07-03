@@ -204,7 +204,7 @@ def _block_html(b: dict) -> str:
                 f'<div class="answer">Escolhido: {e(b.get("selected"))}</div></div>'
             )
         btns = "".join(
-            f'<button class="opt" onclick="choose(\'{bid}\',{json.dumps(o)})">{e(o)}</button>'
+            f'<button class="opt" onclick="choose(\'{bid}\',{e(json.dumps(o))})">{e(o)}</button>'
             for o in b.get("options", [])
         )
         return f'<div class="card"><h3>Escolha</h3><p>{prompt}</p><div class="opts">{btns}</div></div>'
@@ -251,7 +251,7 @@ def _block_html(b: dict) -> str:
                 itype = kind if kind in ("number", "date", "email") else "text"
                 inp = f'<input id="fld-{bid}-{fid}" type="{itype}" value="{val}" data-orig="{val}">'
             fields.append(f'<label class="field"><span>{label}</span>{inp}</label>')
-        ids = json.dumps([f.get("id") for f in b.get("fields", [])])
+        ids = e(json.dumps([f.get("id") for f in b.get("fields", [])]))
         return (
             f'<div class="card"><h3>Formulário</h3><p>{prompt}</p>{"".join(fields)}'
             f'<button onclick="submitForm(\'{bid}\',{ids})">Enviar</button></div>'
