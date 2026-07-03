@@ -112,6 +112,15 @@ your project and the agent learns to:
 
 See [`.claude/skills/painel/SKILL.md`](.claude/skills/painel/SKILL.md).
 
+## Using it with other agents
+
+No skill system required — any agent that can write JSON and run a shell
+command can use pAInel. Guides for agents without Claude Code's background
+event stream:
+
+- [Cursor](docs/cursor.md)
+- [Aider](docs/aider.md)
+
 ## Installing
 
 pAInel has zero runtime dependencies, but `pip install` on newer macOS/Homebrew
