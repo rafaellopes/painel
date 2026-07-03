@@ -9,6 +9,8 @@ organized, clickable dashboard — checkboxes for the manual steps *you* do,
 questions with answer boxes, approval buttons, live progress. One file. No
 dependencies. Works with any agent that can write JSON.
 
+![pAInel demo — ticking manual checkboxes, playing a plan step, answering questions, choosing an option and approving, all live](painel-demo.gif)
+
 </div>
 
 ---
