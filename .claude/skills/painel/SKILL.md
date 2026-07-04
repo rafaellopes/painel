@@ -127,6 +127,34 @@ Block types:
 - `form` — `{ "type":"form", "prompt":"...", "fields":[{"id":"f1","label":"...","kind":"text|number|date|email|textarea|select","options":[...],"value":""}], "submitted":false }`
 - `log` — `{ "type":"log", "title":"...", "entries":[{"ts":"HH:MM","text":"..."}] }`
 
+## Multi-page boards
+
+Boards past ~15-20 blocks turn into an undifferentiated scroll — the same
+"lost in the chat" problem pAInel exists to solve, just one level down. Fix
+it by tagging blocks with `"page": "Financeiro"` (any string). Blocks with
+no `page` stay on the implicit **Home** page (always first, shown as the
+board title). Page order = the order pages first show up in `blocks[]` —
+there's no separate page list to keep in sync.
+
+```json
+{ "id": "b1", "type": "plan", "page": "Financeiro", "title": "..." }
+```
+
+- 0 or 1 distinct pages → nothing changes, no nav appears.
+- ≥2 distinct pages → a left sidebar nav appears (collapses to a dropdown on
+  narrow screens), one entry per page, with a badge showing how many pending
+  items (per `needs_user()`) live on that page.
+- The attention bar still spans every page — its links jump straight to the
+  right page and block (`?page=Financeiro#blk-b1`).
+- Switching page is a normal link/full reload — there's no page you need to
+  "leave open"; just link to `?page=<name>` in your own chat output the same
+  way you already link to `#blk-<id>`.
+
+Use it to group by theme/workstream (e.g. "Financeiro", "Legal", "Operações")
+once a single board is doing double or triple duty. Don't reach for it on
+small boards — it adds visual structure only once there's enough content to
+justify it.
+
 ## Rules of thumb
 
 - Every interactive block needs a stable, unique `id` — you match events by it.

@@ -110,14 +110,32 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
 .status-chip {{ display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
-</style></head><body>
+/* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
+body.has-nav {{ max-width:1040px; }}
+.page-shell {{ display:flex; gap:2rem; align-items:flex-start; }}
+.page-main {{ flex:1; min-width:0; }}
+.pages-nav {{ flex:none; width:190px; }}
+.pages-sidebar {{ display:flex; flex-direction:column; gap:.15rem; position:sticky; top:1rem; }}
+.pages-sidebar .nav-item {{ display:block; padding:.45rem .7rem; border-radius:8px; color:var(--text);
+  text-decoration:none; font-size:.88rem; }}
+.pages-sidebar .nav-item:hover {{ background:var(--border); }}
+.pages-sidebar .nav-item.active {{ background:var(--accent); color:var(--accent-ink); font-weight:600; }}
+.pages-dropdown {{ display:none; }}
+.pages-dropdown select {{ margin-top:0; }}
+@media (max-width:600px) {{
+  .page-shell {{ flex-direction:column; gap:0; }}
+  .pages-nav {{ width:100%; }}
+  .pages-sidebar {{ display:none; }}
+  .pages-dropdown {{ display:block; margin-bottom:1rem; }}
+}}
+</style></head><body{nav_class}>
 {attention}
 <header>
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
   <div id="status-chip" class="status-chip">{status_chip}</div>
 </header>
-{blocks}
+{page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
 async function send(payload) {{

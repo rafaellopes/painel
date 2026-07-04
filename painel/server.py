@@ -25,7 +25,7 @@ import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs
 
 from .blocks import REGISTRY
 from .blocks.base import e
@@ -97,6 +97,86 @@ def _needs_user(board: dict) -> list:
 
 
 # --------------------------------------------------------------------------- #
+# Multi-page navigation (M6, docs/SPEC.md §11)                                #
+# --------------------------------------------------------------------------- #
+def _pages(board: dict) -> list:
+    """Distinct page names in order of first appearance, Home (None) always
+    first regardless of where it first appears among the blocks."""
+    pages = [None]
+    for b in board.get("blocks", []):
+        p = b.get("page")
+        if p is not None and p not in pages:
+            pages.append(p)
+    return pages
+
+
+def _blocks_by_page(board: dict) -> dict:
+    """{page_name_or_None: [blocks]} preserving overall board order."""
+    out: dict = {}
+    for b in board.get("blocks", []):
+        out.setdefault(b.get("page"), []).append(b)
+    return out
+
+
+def _page_pending_counts(board: dict) -> dict:
+    """{page_name_or_None: pending_count} -- intersect needs_user() block ids
+    with each page's block ids."""
+    by_page = _blocks_by_page(board)
+    pending_ids = {bid for bid, _ in _needs_user(board)}
+    counts = {}
+    for page, blocks_list in by_page.items():
+        ids = {str(b.get("id")) for b in blocks_list}
+        counts[page] = len(pending_ids & ids)
+    return counts
+
+
+_BADGE_DIGITS = "⓪①②③④⑤⑥⑦⑧⑨"
+
+
+def _badge(n: int) -> str:
+    if n <= 0:
+        return ""
+    if n < len(_BADGE_DIGITS):
+        return f" {_BADGE_DIGITS[n]}"
+    return f" ({n})"
+
+
+def _page_label(page) -> str:
+    return page if page is not None else None  # resolved against board title by caller
+
+
+def _nav_html(board: dict, active_page) -> str:
+    """Sidebar/dropdown nav (§11.2). Empty string when < 2 distinct pages --
+    this is the backward-compat guarantee: pageless boards get zero nav markup."""
+    pages = _pages(board)
+    if len(pages) < 2:
+        return ""
+    board_title = board.get("title", "pAInel")
+    counts = _page_pending_counts(board)
+    items = []
+    for p in pages:
+        name = board_title if p is None else p
+        href = "/" if p is None else f"/?page={e(p)}"
+        cls = "nav-item active" if p == active_page else "nav-item"
+        items.append(
+            f'<a class="{cls}" href="{href}">{e(name)}{_badge(counts.get(p, 0))}</a>'
+        )
+    options = "".join(
+        f'<option value="{e(p or "")}"{" selected" if p == active_page else ""}>'
+        f'{e(board_title if p is None else p)}{_badge(counts.get(p, 0))}</option>'
+        for p in pages
+    )
+    return (
+        '<nav class="pages-nav">'
+        f'<div class="pages-sidebar">{"".join(items)}</div>'
+        '<div class="pages-dropdown">'
+        f'<select onchange="location.href = this.value ? (\'/?page=\'+encodeURIComponent(this.value)) : \'/\';">'
+        f'{options}</select></div>'
+        '</nav>'
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Whose-turn signal (M5, docs/SPEC.md §10)                                    #
 # --------------------------------------------------------------------------- #
 def _agent_status(board: dict) -> str:
@@ -157,8 +237,13 @@ def _whose_turn(board: dict, blocks_html: str, pending_count: int) -> dict:
     return {"pending": pending_count, "agent_status": agent_status, "has_resolved": has_resolved}
 
 
-def render(board: dict) -> str:
-    blocks_list = board.get("blocks", [])
+def render(board: dict, active_page=None) -> str:
+    all_blocks = board.get("blocks", [])
+    pages = _pages(board)
+    if active_page not in pages:
+        active_page = None  # unknown/absent ?page= -> Home
+    by_page = _blocks_by_page(board)
+    blocks_list = by_page.get(active_page, [])
     total = len(blocks_list)
     blocks = "".join(
         f'<div id="blk-{e(b.get("id", ""))}">{_block_html(b, {"index": i, "total": total})}</div>'
@@ -171,13 +256,19 @@ def render(board: dict) -> str:
             f'Atualizado: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
         ])
     )
+    # Attention bar spans ALL pages (§11.2), not just the active one.
     pending = _needs_user(board)
     pending_count = len(pending)
     if pending:
-        links = " · ".join(f'<a href="#blk-{e(bid)}">{e(label)}</a>' for bid, label in pending)
+        block_page = {str(b.get("id")): b.get("page") for b in all_blocks}
+        links = []
+        for bid, label in pending:
+            p = block_page.get(str(bid))
+            href = f"?page={e(p)}#blk-{e(bid)}" if p is not None else f"#blk-{e(bid)}"
+            links.append(f'<a href="{href}">{e(label)}</a>')
         attention = (
             f'<div class="attention"><span class="attention-count">{len(pending)}</span> '
-            f'à tua espera: {links}</div>'
+            f'à tua espera: {" · ".join(links)}</div>'
         )
     else:
         attention = ""
@@ -186,8 +277,18 @@ def render(board: dict) -> str:
     agent_status, has_resolved = wt["agent_status"], wt["has_resolved"]
     title_text = _title_text(board_title, pending_count, agent_status)
     chip_text = _status_chip(pending_count, agent_status, has_resolved)
+    nav = _nav_html(board, active_page)
+    # Backward compat (§11.1): pageless boards get zero nav-related markup --
+    # no wrapper divs, no body class -- byte-identical to the pre-M6 shell.
+    page_shell_open = '<div class="page-shell">' if nav else ""
+    page_shell_close = "</div>\n" if nav else ""
+    page_main_open = '<div class="page-main">\n' if nav else ""
+    page_main_close = "\n</div>" if nav else ""
     return _PAGE.format(
         title=e(title_text), metaline=metaline, attention=attention,
+        nav=nav, nav_class=" class=\"has-nav\"" if nav else "",
+        page_shell_open=page_shell_open, page_shell_close=page_shell_close,
+        page_main_open=page_main_open, page_main_close=page_main_close,
         blocks=blocks, block_js=_block_js(),
         board_title_js=_js_string(board_title),
         pending_count=pending_count,
@@ -215,11 +316,14 @@ class _Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-        path = urlparse(self.path).path
+        parsed = urlparse(self.path)
+        path = parsed.path
         if path == "/":
+            qs = parse_qs(parsed.query)
+            active_page = qs.get("page", [None])[0]
             with _lock:
                 board = load_board(self.board_path)
-            self._send(200, render(board).encode("utf-8"), "text/html; charset=utf-8")
+            self._send(200, render(board, active_page).encode("utf-8"), "text/html; charset=utf-8")
         elif path == "/version":
             try:
                 v = os.path.getmtime(self.board_path)
