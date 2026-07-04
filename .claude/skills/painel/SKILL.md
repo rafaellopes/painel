@@ -73,12 +73,42 @@ Keep the board as the single source of truth for "where are we". The user should
 be able to glance at it and know the plan, the progress, and what's waiting on
 them — without re-reading the chat.
 
+## Tell the human whose turn it is
+
+Set `meta.agent_status` whenever you know it — the page's `<title>`, favicon dot,
+and header chip all reflect it live, so the human can tell at a glance (tab bar,
+even from another window) whether they need to act:
+
+- `"working"` — you're actively doing something. Default assumption if you never
+  set it, for backward compatibility with older boards.
+- `"waiting"` — you have nothing left to do until the human acts. Set this right
+  before you go idle/block on watching the log for events.
+- `"idle"` — nobody is driving the board. `painel open`/`serve` set this
+  automatically on first run if the key is absent; you don't need to set it
+  yourself for "not started yet", only for "I'm done for now".
+
+```json
+{ "meta": { "agent_status": "waiting" } }
+```
+
+When you post something in the board that needs the human's attention, also
+**mention the direct link in your own chat output** so they don't have to go
+hunting for it — pAInel underlines this by generating an anchor id per block
+(`#blk-<id>`):
+
+```
+👉 http://127.0.0.1:8765/#blk-ap
+```
+
+This is just a convention (no special pAInel endpoint) — build the URL from the
+port `painel open`/`serve` printed and the block's `id`.
+
 ## Board schema
 
 ```json
 {
   "title": "Session title",
-  "meta": { "project": "name", "updated_at": "2026-07-02 21:00" },
+  "meta": { "project": "name", "updated_at": "2026-07-02 21:00", "agent_status": "working" },
   "blocks": [ /* ordered, each with a unique "id" and a "type" */ ]
 }
 ```
@@ -104,3 +134,7 @@ Block types:
 - Prefer `choice`/`approval` over open questions when the options are known.
 - After every meaningful step, update the board — stale boards defeat the point.
 - Leave the board in its final state at the end; it's the session's record.
+- Set `meta.agent_status` ("working"/"waiting"/"idle") so the tab title/favicon/chip
+  tell the human whose turn it is without them switching tabs to check.
+- When something needs the human, echo the direct anchor link (`👉 URL#blk-<id>`)
+  in your own chat output too — don't make them scroll pAInel to find it.

@@ -11,6 +11,7 @@ _PAGE = """<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
+<link rel="icon" id="favicon" href="">
 <style>
 :root {{
   color-scheme: light dark;
@@ -107,11 +108,14 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
 @keyframes pulse {{ 0%,100% {{ box-shadow:0 0 0 0 rgba(125,211,252,.5); }}
   50% {{ box-shadow:0 0 0 5px rgba(125,211,252,0); }} }}
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
+.status-chip {{ display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
+  background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
 </style></head><body>
 {attention}
 <header>
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
+  <div id="status-chip" class="status-chip">{status_chip}</div>
 </header>
 {blocks}
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
@@ -135,13 +139,83 @@ function isBusy() {{
   }}
   return false;
 }}
+
+// --- Whose-turn signal (M5, docs/SPEC.md §10) -------------------------------
+// The server renders the initial title/favicon/chip; this section keeps them
+// live on every poll tick (not just page load), and fires a Notification on
+// a 0->N pending transition while the tab is hidden.
+const boardTitle = {board_title_js};
+let pendingCount = {pending_count};
+let agentStatus = {agent_status_js};
+let hasResolved = {has_resolved};
+let notifyAsked = false;
+
+const FAVICONS = {{
+  red: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Ccircle cx="8" cy="8" r="7" fill="%23f87171"/%3E%3C/svg%3E',
+  yellow: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Ccircle cx="8" cy="8" r="7" fill="%23facc15"/%3E%3C/svg%3E',
+  green: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Ccircle cx="8" cy="8" r="7" fill="%234ade80"/%3E%3C/svg%3E',
+  gray: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"%3E%3Ccircle cx="8" cy="8" r="7" fill="%239aa0aa"/%3E%3C/svg%3E'
+}};
+function setFavicon(color) {{
+  const link = document.getElementById('favicon');
+  if (link) link.href = FAVICONS[color] || FAVICONS.gray;
+}}
+function titleFor(pending, status) {{
+  if (pending > 0) return '🔴 ' + pending + ' à tua espera — ' + boardTitle;
+  if (status === 'working') return '🟡 ' + boardTitle;
+  return '⚪ ' + boardTitle;
+}}
+function chipFor(pending, status, resolved) {{
+  if (pending > 0) return '🔴 À espera de ti (' + pending + ')';
+  if (status === 'working') return '🟡 O agente está a trabalhar…';
+  if (resolved) return '✅ Tudo feito';
+  return '⚪ Agente offline';
+}}
+function faviconColorFor(pending, status, resolved) {{
+  if (pending > 0) return 'red';
+  if (status === 'working') return 'yellow';
+  if (resolved) return 'green';
+  return 'gray';
+}}
+function updateWhoseTurn(pending, status, resolved) {{
+  document.title = titleFor(pending, status);
+  const chip = document.getElementById('status-chip');
+  if (chip) chip.textContent = chipFor(pending, status, resolved);
+  setFavicon(faviconColorFor(pending, status, resolved));
+}}
+async function maybeNotify(newPending) {{
+  if (newPending <= pendingCount || !document.hidden) return;
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default' && !notifyAsked) {{
+    notifyAsked = true;
+    try {{ await Notification.requestPermission(); }} catch (e) {{ return; }}
+  }}
+  if (Notification.permission !== 'granted') return;
+  try {{
+    const n = new Notification(titleFor(newPending, agentStatus));
+    n.onclick = () => {{
+      window.focus();
+      const first = document.querySelector('.attention a[href^="#blk-"]');
+      if (first) location.hash = first.getAttribute('href');
+    }};
+  }} catch (e) {{}}
+}}
+updateWhoseTurn(pendingCount, agentStatus, hasResolved);
+
 let knownVersion = null;
 async function poll() {{
   try {{
     const r = await fetch('/version', {{cache:'no-store'}});
-    const {{v}} = await r.json();
-    if (knownVersion === null) {{ knownVersion = v; return; }}
-    if (v !== knownVersion && !isBusy()) location.reload();
+    const data = await r.json();
+    if (knownVersion === null) {{ knownVersion = data.v; }}
+    else if (data.v !== knownVersion && !isBusy()) {{ location.reload(); return; }}
+    // Re-evaluate the whose-turn signal every tick (§10.2), independent of
+    // whether the board content changed enough to warrant a reload.
+    maybeNotify(data.pending);
+    pendingCount = data.pending;
+    agentStatus = data.agent_status;
+    hasResolved = data.has_resolved;
+    updateWhoseTurn(pendingCount, agentStatus, hasResolved);
   }} catch (e) {{}}
 }}
 setInterval(poll, 1500);

@@ -39,7 +39,16 @@ with pAInel instead of only talking in chat.
    (mark tasks done, reply to a `plan_comment` thread by appending
    `{"from": "agent", "text": "..."}`, add next steps) and save — the page
    polls and reloads on its own, never while the user is typing.
-5. `painel stop` when done. Leave the board as the session record.
+5. Set `meta.agent_status` to `"working"` while actively doing something and
+   `"waiting"` right before you go idle waiting on the human — the tab title,
+   favicon dot, and header chip reflect it live, so the user can tell whose
+   turn it is without switching tabs. `painel open`/`serve` default it to
+   `"idle"` on first run if you never set it.
+6. When something in the board needs the human, also mention the direct
+   anchor link in your own chat output so they don't have to hunt for it:
+   `👉 http://127.0.0.1:<port>/#blk-<id>` (the port is whatever `painel open`
+   printed; the anchor id is just the block's `id`).
+7. `painel stop` when done. Leave the board as the session record.
 ```
 
 Tell aider to always load it:

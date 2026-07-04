@@ -96,6 +96,45 @@ def _needs_user(board: dict) -> list:
     return out
 
 
+# --------------------------------------------------------------------------- #
+# Whose-turn signal (M5, docs/SPEC.md §10)                                    #
+# --------------------------------------------------------------------------- #
+def _agent_status(board: dict) -> str:
+    """meta.agent_status, defaulting to 'working' when absent (backward
+    compat with boards saved before M5)."""
+    return board.get("meta", {}).get("agent_status") or "working"
+
+
+def _status_chip(pending: int, agent_status: str, has_resolved: bool) -> str:
+    """Header chip text (§10.2). 'waiting' with nothing pending renders the
+    same as 'idle', per spec."""
+    if pending > 0:
+        return f"🔴 À espera de ti ({pending})"
+    if agent_status == "working":
+        return "🟡 O agente está a trabalhar…"
+    if has_resolved:
+        return "✅ Tudo feito"
+    return "⚪ Agente offline"
+
+
+def _title_text(board_title: str, pending: int, agent_status: str) -> str:
+    """<title> text (§10.2)."""
+    if pending > 0:
+        return f"🔴 {pending} à tua espera — {board_title}"
+    if agent_status == "working":
+        return f"🟡 {board_title}"
+    return f"⚪ {board_title}"
+
+
+def _js_string(s: str) -> str:
+    """JSON-encode a string for safe embedding inside an inline <script>
+    block: escape every '<' so user content (e.g. a board title containing
+    '<script>...') can never introduce a raw tag, opening or closing -- the
+    <script>-body analogue of the e(json.dumps(x)) rule for HTML attributes
+    (docs/SPEC.md §1)."""
+    return json.dumps(s, ensure_ascii=False).replace("<", "\\u003c")
+
+
 def _block_js() -> str:
     """Join every registered block module's JS, in a stable, deterministic order."""
     ordered_types = list(_JS_ORDER) + sorted(t for t in REGISTRY if t not in _JS_ORDER)
@@ -108,6 +147,14 @@ def _block_js() -> str:
         if js:
             parts.append(js.strip("\n"))
     return "\n".join(parts)
+
+
+def _whose_turn(board: dict, blocks_html: str, pending_count: int) -> dict:
+    """Everything the M5 whose-turn signal needs, computed once and reused
+    by both the full page render and the /version polling endpoint."""
+    agent_status = _agent_status(board)
+    has_resolved = 'class="card answered"' in blocks_html
+    return {"pending": pending_count, "agent_status": agent_status, "has_resolved": has_resolved}
 
 
 def render(board: dict) -> str:
@@ -125,6 +172,7 @@ def render(board: dict) -> str:
         ])
     )
     pending = _needs_user(board)
+    pending_count = len(pending)
     if pending:
         links = " · ".join(f'<a href="#blk-{e(bid)}">{e(label)}</a>' for bid, label in pending)
         attention = (
@@ -133,8 +181,20 @@ def render(board: dict) -> str:
         )
     else:
         attention = ""
-    return _PAGE.format(title=e(board.get("title", "pAInel")), metaline=metaline,
-                        attention=attention, blocks=blocks, block_js=_block_js())
+    board_title = board.get("title", "pAInel")
+    wt = _whose_turn(board, blocks, pending_count)
+    agent_status, has_resolved = wt["agent_status"], wt["has_resolved"]
+    title_text = _title_text(board_title, pending_count, agent_status)
+    chip_text = _status_chip(pending_count, agent_status, has_resolved)
+    return _PAGE.format(
+        title=e(title_text), metaline=metaline, attention=attention,
+        blocks=blocks, block_js=_block_js(),
+        board_title_js=_js_string(board_title),
+        pending_count=pending_count,
+        agent_status_js=_js_string(agent_status),
+        has_resolved="true" if has_resolved else "false",
+        status_chip=e(chip_text),
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -165,7 +225,19 @@ class _Handler(BaseHTTPRequestHandler):
                 v = os.path.getmtime(self.board_path)
             except OSError:
                 v = 0
-            self._send(200, json.dumps({"v": v}).encode(), "application/json")
+            # Whose-turn fields ride along on the poll endpoint so the page
+            # can refresh title/favicon/chip every tick (§10.2) without a
+            # full reload -- reload only happens when the version itself changes.
+            with _lock:
+                board = load_board(self.board_path)
+            blocks_list = board.get("blocks", [])
+            total = len(blocks_list)
+            blocks_html = "".join(
+                _block_html(b, {"index": i, "total": total}) for i, b in enumerate(blocks_list)
+            )
+            pending_count = len(_needs_user(board))
+            payload = {"v": v, **_whose_turn(board, blocks_html, pending_count)}
+            self._send(200, json.dumps(payload).encode(), "application/json")
         else:
             self._send(404, b"not found", "text/plain")
 

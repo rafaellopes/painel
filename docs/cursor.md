@@ -46,7 +46,16 @@ Workflow:
    directly (mark tasks done, answer a `plan_comment` thread by appending a
    `{"from": "agent", "text": "..."}` entry, add next steps) and save. The page
    polls and reloads on its own — never while the user is actively typing.
-5. When done, run `painel stop`. Leave the board file as the session record.
+5. Set `meta.agent_status` to `"working"` while actively doing something and
+   `"waiting"` right before you go idle waiting on the human — the tab title,
+   favicon dot, and header chip reflect it live, so the user can tell whose
+   turn it is without switching tabs. `painel open`/`serve` default it to
+   `"idle"` on first run if you never set it.
+6. When something in the board needs the human, also mention the direct
+   anchor link in your own chat output so they don't have to hunt for it:
+   `👉 http://127.0.0.1:<port>/#blk-<id>` (the port is whatever `painel open`
+   printed; the anchor id is just the block's `id`).
+7. When done, run `painel stop`. Leave the board file as the session record.
 ```
 
 ## 3. Watching the log without a background-task tool

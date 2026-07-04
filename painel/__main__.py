@@ -40,7 +40,7 @@ STARTER = {
 def _demo_board() -> dict:
     return {
         "title": "pAInel — demonstração",
-        "meta": {"project": "demo"},
+        "meta": {"project": "demo", "agent_status": "working"},
         "blocks": [
             {"id": "h1", "type": "heading", "text": "O que é"},
             {"id": "m1", "type": "markdown",
@@ -123,10 +123,25 @@ def _read_pidfile(board: str) -> dict | None:
         return None
 
 
+def _default_agent_status_if_absent(board: str) -> None:
+    """M5 (SPEC.md §10.3): best-effort only -- if the board predates M5 or
+    was never touched by an agent, assume nobody is driving it yet. Once an
+    agent starts updating meta.agent_status itself, that's authoritative and
+    this is never called again for that transition (only fires on absence)."""
+    try:
+        b = load_board(board)
+    except (OSError, ValueError):
+        return
+    if "agent_status" not in b.setdefault("meta", {}):
+        b["meta"]["agent_status"] = "idle"
+        save_board(board, b)
+
+
 def cmd_open(board: str, port: int | None) -> int:
     if not os.path.exists(board):
         save_board(board, STARTER)
         print(f"board criado: {board}")
+    _default_agent_status_if_absent(board)
 
     info = _read_pidfile(board)
     if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
@@ -215,6 +230,7 @@ def main(argv=None) -> int:
     if args.cmd == "status":
         return cmd_status(args.board)
     if args.cmd == "serve":
+        _default_agent_status_if_absent(args.board)
         serve(args.board, port=args.port, open_browser=args.open)
         return 0
     if args.cmd == "init":
