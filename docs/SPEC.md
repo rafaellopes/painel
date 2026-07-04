@@ -170,6 +170,7 @@ Current catalog:
 | `plan_edit` | `item`, `value` | yes |
 | `plan_comment` | `item`, `value` | yes |
 | `plan_seen` | `item` | **no** (silent) |
+| `chat_message` | `value: str` | yes |
 
 New blocks add events under their own prefix (`<type>_<verb>`), declared in
 the module. Never reuse another block's event names.
@@ -215,6 +216,7 @@ the module. Never reuse another block's event names.
 | `approval` | authorize | `prompt`, `decision`, `comment` | approve |
 | `form` | multi-field input | `prompt`, `fields[{id,label,kind: text\|number\|date\|email\|select\|textarea,options?,value}]`, `submitted` | submit |
 | `log` | timeline/decisions | `title`, `entries[{ts,text}]` | — |
+| `chat` | free-form conversation | `title`, `messages[{from: user\|agent,text}]` | chat_message |
 
 ### 5.2 Batch 1 — implement in M2 (in this order)
 

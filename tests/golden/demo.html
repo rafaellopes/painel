@@ -102,6 +102,11 @@ button.ico.has-reply { color:var(--accent); border-color:var(--accent);
 footer { color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }
 .status-chip { display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }
+/* --- chat block (M7, docs/SPEC.md §5.5) -- reuses .thread-msg(s) above --- */
+.chat-card h3 { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+.chat-chip { margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
+  letter-spacing:normal; }
+.chat-msgs { max-height:340px; overflow-y:auto; margin-bottom:.5rem; }
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav { max-width:1040px; }
 .page-shell { display:flex; gap:2rem; align-items:flex-start; }
@@ -215,7 +220,7 @@ body.has-nav { max-width:1040px; }
                 <textarea id="plan-comment-pl-p4" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
                 <button onclick="planSendComment('pl','p4')">Enviar</button>
               </div>
-            </li></ul><div class="muted small">1/4 concluídos</div></div></div><div id="blk-h3"><h2 class="section">Progresso do agente</h2></div><div id="blk-tk"><div class="card"><h3>Pipeline</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="tasks"><li><span class="dot done"></span><span class="done-text">Ler configuração</span></li><li><span class="dot wip"></span><span class="">Processar ficheiro</span></li><li><span class="dot pending"></span><span class="">Gerar relatório</span></li><li><span class="dot blocked"></span><span class="">Enviar por email</span></li></ul><div class="muted small">1/4 concluídas</div></div></div><div id="blk-h4"><h2 class="section">Perguntas &amp; decisões</h2></div><div id="blk-q1"><div class="card"><h3>Pergunta</h3><p>Qual o email de destino do relatório?</p><textarea id="ta-q1" data-orig="" placeholder="Escreve a tua resposta..."></textarea><button onclick="answer('q1')">Enviar</button></div></div><div id="blk-ch"><div class="card"><h3>Escolha</h3><p>Formato do relatório?</p><div class="opts"><button class="opt" onclick="choose('ch',&quot;PDF&quot;)">PDF</button><button class="opt" onclick="choose('ch',&quot;Excel&quot;)">Excel</button><button class="opt" onclick="choose('ch',&quot;Ambos&quot;)">Ambos</button></div></div></div><div id="blk-ap"><div class="card"><h3>Aprovação</h3><p>Posso enviar o email agora?</p><textarea id="cm-ap" data-orig="" placeholder="Comentário (opcional)"></textarea><div class="opts"><button class="ok" onclick="approve('ap','approved')">Aprovar</button><button class="no" onclick="approve('ap','rejected')">Rejeitar</button></div></div></div><div id="blk-fm"><div class="card"><h3>Formulário</h3><p>Dados do cliente:</p><label class="field"><span>Nome</span><input id="fld-fm-nome" type="text" value="" data-orig=""></label><label class="field"><span>Plano</span><select id="fld-fm-plano"><option>Básico</option><option>Pro</option></select></label><button onclick="submitForm('fm',[&quot;nome&quot;, &quot;plano&quot;])">Enviar</button></div></div><div id="blk-lg"><div class="card"><h3>Registo</h3><ul class="log"><li><span class="muted small">10:00</span> Sessão iniciada</li></ul></div></div>
+            </li></ul><div class="muted small">1/4 concluídos</div></div></div><div id="blk-h3"><h2 class="section">Progresso do agente</h2></div><div id="blk-tk"><div class="card"><h3>Pipeline</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="tasks"><li><span class="dot done"></span><span class="done-text">Ler configuração</span></li><li><span class="dot wip"></span><span class="">Processar ficheiro</span></li><li><span class="dot pending"></span><span class="">Gerar relatório</span></li><li><span class="dot blocked"></span><span class="">Enviar por email</span></li></ul><div class="muted small">1/4 concluídas</div></div></div><div id="blk-h4"><h2 class="section">Perguntas &amp; decisões</h2></div><div id="blk-q1"><div class="card"><h3>Pergunta</h3><p>Qual o email de destino do relatório?</p><textarea id="ta-q1" data-orig="" placeholder="Escreve a tua resposta..."></textarea><button onclick="answer('q1')">Enviar</button></div></div><div id="blk-ch"><div class="card"><h3>Escolha</h3><p>Formato do relatório?</p><div class="opts"><button class="opt" onclick="choose('ch',&quot;PDF&quot;)">PDF</button><button class="opt" onclick="choose('ch',&quot;Excel&quot;)">Excel</button><button class="opt" onclick="choose('ch',&quot;Ambos&quot;)">Ambos</button></div></div></div><div id="blk-ap"><div class="card"><h3>Aprovação</h3><p>Posso enviar o email agora?</p><textarea id="cm-ap" data-orig="" placeholder="Comentário (opcional)"></textarea><div class="opts"><button class="ok" onclick="approve('ap','approved')">Aprovar</button><button class="no" onclick="approve('ap','rejected')">Rejeitar</button></div></div></div><div id="blk-fm"><div class="card"><h3>Formulário</h3><p>Dados do cliente:</p><label class="field"><span>Nome</span><input id="fld-fm-nome" type="text" value="" data-orig=""></label><label class="field"><span>Plano</span><select id="fld-fm-plano"><option>Básico</option><option>Pro</option></select></label><button onclick="submitForm('fm',[&quot;nome&quot;, &quot;plano&quot;])">Enviar</button></div></div><div id="blk-lg"><div class="card"><h3>Registo</h3><ul class="log"><li><span class="muted small">10:00</span> Sessão iniciada</li></ul></div></div><div id="blk-h5"><h2 class="section">Conversa livre</h2></div><div id="blk-chat"><div class="card chat-card"><h3>Conversa<span class="status-chip chat-chip">🟡 O agente está a trabalhar…</span></h3><div class="thread-msgs chat-msgs" id="chat-msgs-chat"><div class="thread-msg user"><b>Tu:</b> Porque escolheste esta abordagem?</div><div class="thread-msg agent"><b>Agente:</b> Porque <strong>X</strong> evita Y — ver decisão em Registo.</div></div><textarea id="chat-ta-chat" data-orig="" placeholder="Escreve uma mensagem..."></textarea><button onclick="chatSend('chat')">Enviar</button></div></div>
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
 async function send(payload) {
@@ -278,6 +283,15 @@ for (const key of _openThreads()) {
   const box = document.getElementById('plan-thread-' + key);
   if (box) box.style.display = 'block';
 }
+function chatSend(bid) {
+  const ta = document.getElementById('chat-ta-' + bid);
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({event:'chat_message', block:bid, value:v}).then(reloadSoon);
+}
+// Auto-scroll every chat card's message list to the bottom (newest message)
+// on every page load/reload -- run for all chat blocks on the page at once.
+document.querySelectorAll('.chat-msgs').forEach(function (el) { el.scrollTop = el.scrollHeight; });
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic
 // "refresh wiped what I was typing" bug.

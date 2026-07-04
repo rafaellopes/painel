@@ -4,7 +4,7 @@ import unittest
 
 from painel.blocks import REGISTRY
 from painel.blocks import heading, markdown, note, tasks, plan, checklist
-from painel.blocks import question, choice, approval, form, log
+from painel.blocks import question, choice, approval, form, log, chat
 
 XSS = '"<script>alert(1)</script>'
 
@@ -13,7 +13,7 @@ class RegistryTest(unittest.TestCase):
     def test_all_documented_types_registered(self):
         expected = {
             "heading", "markdown", "note", "tasks", "plan", "checklist",
-            "question", "choice", "approval", "form", "log",
+            "question", "choice", "approval", "form", "log", "chat",
         }
         self.assertEqual(expected, set(REGISTRY.keys()))
 
@@ -373,6 +373,76 @@ class LogTest(unittest.TestCase):
     def test_escaping(self):
         b = {"id": XSS, "type": "log", "title": XSS, "entries": [{"ts": XSS, "text": XSS}]}
         html = render_ctx(log, b)
+        self.assertNotIn("<script", html)
+
+
+class ChatTest(unittest.TestCase):
+    def test_render_empty(self):
+        html = render_ctx(chat, {"id": "chat", "type": "chat", "messages": []})
+        self.assertIn("chat-card", html)
+        self.assertIn("chatSend", html)
+
+    def test_render_filled_order_and_classes(self):
+        b = {"id": "chat", "type": "chat", "title": "Conversa", "messages": [
+            {"from": "user", "text": "Olá"},
+            {"from": "agent", "text": "Olá! Em que posso ajudar?"},
+            {"from": "user", "text": "Explica X"},
+        ]}
+        html = render_ctx(chat, b)
+        self.assertIn('class="thread-msg user"', html)
+        self.assertIn('class="thread-msg agent"', html)
+        # Newest-at-bottom: messages must render in original (chronological) order.
+        self.assertLess(html.index("Olá!"), html.index("Explica X"))
+        self.assertLess(html.index("Olá<"), html.index("Olá!"))
+
+    def test_render_shows_status_chip_when_ctx_has_agent_status(self):
+        b = {"id": "chat", "type": "chat", "messages": []}
+        html = chat.render(b, {"index": 0, "total": 1, "agent_status": "working"})
+        self.assertIn("chat-chip", html)
+        self.assertIn("a trabalhar", html)
+
+    def test_render_no_chip_when_agent_status_absent(self):
+        html = render_ctx(chat, {"id": "chat", "type": "chat", "messages": []})
+        self.assertNotIn("chat-chip", html)
+
+    def test_apply_chat_message(self):
+        b = {"id": "chat", "type": "chat", "messages": []}
+        self.assertTrue(chat.apply(b, {"event": "chat_message", "value": "Olá agente"}))
+        self.assertEqual(b["messages"], [{"from": "user", "text": "Olá agente"}])
+        # A second message appends, doesn't replace.
+        self.assertTrue(chat.apply(b, {"event": "chat_message", "value": "segunda"}))
+        self.assertEqual(len(b["messages"]), 2)
+        self.assertEqual(b["messages"][-1]["text"], "segunda")
+
+    def test_apply_unknown_event(self):
+        b = {"id": "chat", "type": "chat", "messages": []}
+        self.assertFalse(chat.apply(b, {"event": "nonsense"}))
+        self.assertEqual(b["messages"], [])
+
+    def test_chat_message_not_silent(self):
+        self.assertNotIn("chat_message", chat.SILENT_EVENTS)
+
+    def test_needs_user_always_empty(self):
+        # Judgment call (docs/SPEC.md §5.5, see chat.needs_user docstring):
+        # a chat awaiting an agent reply is NOT something the human is
+        # waiting on, so it must never populate the human-facing attention
+        # bar (§6.2) -- regardless of who sent the last message.
+        self.assertEqual(chat.needs_user({"id": "chat", "messages": []}), [])
+        b_user_last = {"id": "chat", "messages": [
+            {"from": "agent", "text": "oi"},
+            {"from": "user", "text": "responde-me"},
+        ]}
+        self.assertEqual(chat.needs_user(b_user_last), [])
+        b_agent_last = {"id": "chat", "messages": [
+            {"from": "user", "text": "oi"},
+            {"from": "agent", "text": "resposta"},
+        ]}
+        self.assertEqual(chat.needs_user(b_agent_last), [])
+
+    def test_escaping(self):
+        b = {"id": XSS, "type": "chat", "title": XSS,
+             "messages": [{"from": XSS, "text": XSS}]}
+        html = render_ctx(chat, b)
         self.assertNotIn("<script", html)
 
 

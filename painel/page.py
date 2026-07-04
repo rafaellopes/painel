@@ -110,6 +110,11 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
 .status-chip {{ display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
+/* --- chat block (M7, docs/SPEC.md §5.5) -- reuses .thread-msg(s) above --- */
+.chat-card h3 {{ display:flex; align-items:center; justify-content:space-between; gap:.5rem; }}
+.chat-chip {{ margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
+  letter-spacing:normal; }}
+.chat-msgs {{ max-height:340px; overflow-y:auto; margin-bottom:.5rem; }}
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav {{ max-width:1040px; }}
 .page-shell {{ display:flex; gap:2rem; align-items:flex-start; }}

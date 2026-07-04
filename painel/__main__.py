@@ -82,6 +82,11 @@ def _demo_board() -> dict:
             {"id": "lg", "type": "log", "title": "Registo", "entries": [
                 {"ts": "10:00", "text": "Sessão iniciada"},
             ]},
+            {"id": "h5", "type": "heading", "text": "Conversa livre"},
+            {"id": "chat", "type": "chat", "title": "Conversa", "messages": [
+                {"from": "user", "text": "Porque escolheste esta abordagem?"},
+                {"from": "agent", "text": "Porque **X** evita Y — ver decisão em Registo."},
+            ]},
         ],
     }
 

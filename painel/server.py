@@ -28,7 +28,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
 from .blocks import REGISTRY
-from .blocks.base import e
+from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
 from .page import _PAGE
 
 _lock = threading.Lock()
@@ -181,20 +181,15 @@ def _nav_html(board: dict, active_page) -> str:
 # --------------------------------------------------------------------------- #
 def _agent_status(board: dict) -> str:
     """meta.agent_status, defaulting to 'working' when absent (backward
-    compat with boards saved before M5)."""
-    return board.get("meta", {}).get("agent_status") or "working"
+    compat with boards saved before M5). Delegates to blocks.base so chat.py
+    (M7) can show the identical chip without a circular import."""
+    return _blocks_agent_status(board)
 
 
 def _status_chip(pending: int, agent_status: str, has_resolved: bool) -> str:
     """Header chip text (§10.2). 'waiting' with nothing pending renders the
-    same as 'idle', per spec."""
-    if pending > 0:
-        return f"🔴 À espera de ti ({pending})"
-    if agent_status == "working":
-        return "🟡 O agente está a trabalhar…"
-    if has_resolved:
-        return "✅ Tudo feito"
-    return "⚪ Agente offline"
+    same as 'idle', per spec. Delegates to blocks.base (see _agent_status)."""
+    return _blocks_status_chip_text(pending, agent_status, has_resolved)
 
 
 def _title_text(board_title: str, pending: int, agent_status: str) -> str:
@@ -245,8 +240,14 @@ def render(board: dict, active_page=None) -> str:
     by_page = _blocks_by_page(board)
     blocks_list = by_page.get(active_page, [])
     total = len(blocks_list)
+    # Computed early (needs only meta, not the rendered HTML) so blocks that
+    # want to show the M5 whose-turn chip themselves (chat.py, M7, §5.5) can
+    # read it from ctx during their own render().
+    current_agent_status = _agent_status(board)
     blocks = "".join(
-        f'<div id="blk-{e(b.get("id", ""))}">{_block_html(b, {"index": i, "total": total})}</div>'
+        f'<div id="blk-{e(b.get("id", ""))}">'
+        f'{_block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})}'
+        f'</div>'
         for i, b in enumerate(blocks_list)
     )
     meta = board.get("meta", {})
