@@ -283,6 +283,43 @@ Bar + big number. ≥ `warn_at`·max → warning color. Read-only.
 `chart` (simple SVG series). **Do not implement without a spec section.**
 Reserved = the names may not be used for anything else.
 
+### 5.5 `chat` block — full spec (implement in M7)
+
+Free-form conversation as a first-class block, so the human never needs a
+separate terminal for the day-to-day dialogue. It generalizes the pattern
+already proven by `plan`'s per-item threads (§5.1) to a top-level block.
+
+```jsonc
+{ "id": "chat", "type": "chat", "title": "Conversa",
+  "messages": [
+    {"from": "user", "text": "Porque escolheste esta abordagem?"},
+    {"from": "agent", "text": "Porque X evita Y — ver decisão em Decisões."}
+  ] }
+```
+
+- Render: message list as bubbles (reuse `.thread-msg`/`.thread-msg.user`/
+  `.thread-msg.agent` styles from `plan`'s thread CSS — do not duplicate
+  the rule, extract to a shared class both use), newest at the bottom,
+  auto-scrolled into view; a fixed textarea + "Enviar" button below.
+- Only ONE `chat` block per board makes sense (top-level, agent-agnostic
+  free text) — render fine either way, but the skill should only ever
+  compose one.
+- Event `chat_message {value}` → append `{"from":"user","text":value}`.
+  **Not silent** — this is the whole point, the agent must be woken.
+- `needs_user()`: pending (label "Nova mensagem" — actually: only report
+  pending if the last message is from `user` with no agent reply yet AND
+  more than ~5s has passed, to avoid flagging "pending" the instant the
+  user hits send, before the agent had a chance to answer. Simplest
+  correct rule: pending iff `messages` is non-empty and `messages[-1]["from"]
+  == "user"`. Same semantics as the plan-thread unread logic in reverse.)
+- No `seen` counter needed at first (unlike plan threads) — the block is
+  always visible at the top, not tucked behind a toggle.
+- Depends on **M5's `meta.agent_status`** (see §11) to show a small state
+  chip inside the chat card header ("🟢 a ouvir" / "🟡 a trabalhar…" /
+  "⚪ agente offline") — without it, a message sent while the agent isn't
+  running just sits unanswered with no explanation. Build M5 before M7,
+  or at minimum before M7 ships to real (non-technical) users.
+
 ### 5.4 How to add a block (the recipe a simple model follows)
 
 1. Copy `blocks/_template.py` → `blocks/<type>.py`; fill `TYPE`, `STRINGS`.
@@ -350,6 +387,125 @@ Framework: `unittest` (stdlib only). Layout: `tests/test_blocks.py`,
 
 ---
 
+## 10. Whose-turn signal (M5) — full spec
+
+**Problem this solves:** the human splits attention between the agent's own
+surface (terminal/chat) and the pAInel tab, with no ambient signal for who
+should act next. Solved without the human having to look at either screen
+directly.
+
+### 10.1 Protocol addition
+
+```jsonc
+{ "meta": { "agent_status": "working" } }   // "working" | "waiting" | "idle"
+```
+
+- `working` — agent is actively doing something (default assumption when
+  the field is absent, for backward compatibility with existing boards).
+- `waiting` — agent has nothing left to do until the human acts (i.e.
+  `_needs_user(board)` is non-empty AND the agent has no other in-flight
+  work — in practice: the agent sets this explicitly right before it goes
+  idle/blocks on Monitor).
+- `idle` — agent process isn't running / isn't watching this board at all
+  (set by the CLI, not the agent — see 10.3).
+
+The agent updates `meta.agent_status` the same way it updates any other
+board field: read, mutate, `save_board()`. No new event type needed for the
+agent→board direction (it's not a human interaction).
+
+### 10.2 Rendering
+
+- **`<title>`**: dynamic via JS based on `_needs_user()` count AND
+  `agent_status`, re-evaluated on every poll tick (§6.3), not just on load:
+  - pending > 0 → `🔴 N à tua espera — <board title>`
+  - pending == 0 and status == working → `🟡 <board title>`
+  - pending == 0 and status == idle → `⚪ <board title>`
+  - pending == 0 and status == waiting (rare: agent waiting but nothing
+    flagged — treat as idle for display) → `⚪ <board title>`
+- **Favicon**: a tiny inline SVG data-URI dot (red/yellow/green/gray),
+  swapped via JS by rewriting the `<link rel="icon">` href — no image
+  asset, keeps zero-dependency promise. Function `setFavicon(color)`.
+- **Header chip**: small pill next to the title, same four states, text
+  version of the above ("🟡 O agente está a trabalhar…", "🔴 À espera de
+  ti (N)", "⚪ Agente offline", "✅ Tudo feito" when status idle/waiting
+  and pending == 0 and board has ≥1 resolved interactive block — reuse
+  `_needs_user` plumbing, don't add new state tracking).
+- **Browser notification**: when `pending` transitions from 0 to >0 (or
+  increases) AND the document is hidden (`document.hidden`), call
+  `Notification` API (request permission lazily, once, on first qualifying
+  transition — never on page load, that's an anti-pattern that gets
+  ignored/blocked by users). Title: the same 🔴 string; click → focuses
+  the tab and scrolls to the first pending anchor.
+
+### 10.3 CLI responsibility
+
+`painel open`/`serve` should set `meta.agent_status = "idle"` when the
+board file doesn't already have the key (first run) and there's no evidence
+of a live agent (this is best-effort, not authoritative — the agent is the
+source of truth once it's running and updating the field itself). Do not
+over-engineer process-liveness detection here; the simple default plus the
+agent setting `"working"`/`"waiting"` as it goes is sufficient for M5.
+
+### 10.4 Deep links from the agent's own surface
+
+When the agent (in Claude Code, or whatever is driving the board) composes
+a block that needs the human, it should mention the direct anchor URL in
+its own chat output, e.g. `👉 http://127.0.0.1:PORT/#blk-<id>`. This is a
+**convention for the skill/integration docs to teach**, not new code in
+pAInel itself — no spec work needed beyond documenting it in
+`.claude/skills/painel/SKILL.md` and the Cursor/Aider guides.
+
+---
+
+## 11. Multi-page navigation (M6) — full spec
+
+**Problem this solves:** large boards (many blocks) become an undifferentiated
+scroll, reproducing the "lost in the chat" problem inside pAInel itself.
+
+### 11.1 Protocol addition
+
+```jsonc
+{ "id": "b1", "type": "plan", "page": "Financeiro", ... }
+```
+
+- `page` is optional on every block. Absent → block renders on the
+  implicit **Home** page (page name `null`/omitted, displayed as the board
+  title, always first in the nav).
+- Page order = **order of first appearance** in `blocks[]` (no separate
+  page-list to maintain — avoids the two-sources-of-truth trap).
+- Boards with zero blocks carrying a `page` value render exactly as today:
+  **no nav UI appears at all.** This must be verified by a test — multi-page
+  is purely additive, must not add visual noise to small/existing boards.
+
+### 11.2 Rendering
+
+- When ≥2 distinct `page` values (including implicit Home) exist: render a
+  left sidebar nav (collapses to a top dropdown under ~600px viewport —
+  reuse existing responsive patterns if any, otherwise plain CSS
+  `@media`). Each nav item: page name + a badge = count of pending
+  `_needs_user()` items whose block lives on that page (e.g. `Financeiro ③`).
+  Zero pending → no badge (not "0").
+- Only blocks belonging to the active page render in the main column;
+  others are omitted from the DOM entirely (not just hidden) — keeps pages
+  fast and avoids id collisions across pages mattering.
+- **The attention bar (§6.2) becomes global**, spanning pages: its anchor
+  links must navigate to the right page AND scroll to the block — i.e.
+  `href="?page=<page>#blk-<id>"`. Switching page via query param is a full
+  reload (simplicity over SPA complexity — this is still a stdlib-only
+  server-rendered app); `?page=` persists across the existing `/version`
+  poll-reload (JS must preserve `location.search` on `location.reload()`,
+  which it does by default — just don't rewrite the URL elsewhere).
+- Current page persists across reloads the same way open-threads do
+  (§ "Open threads persist" precedent) — but simpler: it's already in the
+  URL, so a normal reload naturally keeps it. No sessionStorage needed here.
+
+### 11.3 Non-goals for M6
+
+No drag-to-reorder pages, no nested pages, no per-page permissions. If a
+future need appears, extend additively; do not redesign the `page` field.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -358,7 +514,15 @@ Framework: `unittest` (stdlib only). Layout: `tests/test_blocks.py`,
 | **M2** | Batch-1 blocks: countdown, file_drop, rating, table, links, gauge (+ `/upload`) | Each passes §5.4 DoD; demo board shows all six; skill updated |
 | **M3** | Board export: `GET /export` → single-file HTML report (inline CSS, no JS, print-friendly); "Exportar" link in footer | Opens standalone in a browser from disk; includes answered states + threads + log |
 | **M4** | PyPI release `painel` 0.2.0 (`pipx install painel`) | Fresh machine: `pipx install painel && painel demo` works |
+| **M5** | Whose-turn signal (§10): dynamic `<title>`, favicon, header chip, browser notification, `meta.agent_status` protocol field | Title/favicon change correctly across all 4 states in a manual + scripted check; notification fires only on 0→N transition while hidden; existing boards without `agent_status` still render (defaults to `working`) |
+| **M6** | Multi-page navigation (§11): `page` field, sidebar/dropdown nav with pending badges, attention bar spans pages | Board with no `page` fields renders identically to pre-M6 (no nav at all) — pinned by test; board with 2+ pages shows nav, badges match `_needs_user()` counts, anchor links cross pages correctly |
+| **M7** | `chat` block (§5.5) | Passes §5.4 DoD; requires M5 merged first (status chip dependency); demo board includes a chat example |
 
-Work strictly in milestone order. One PR per milestone; M2 may be one PR
-per block. Conventional commit messages. Ask nothing that this spec already
-answers; where the spec is silent on cosmetics, match existing style.
+**Suggested build order for a growing catalog:** M1 (already the
+foundation) → M5 and M6 can proceed in **either order relative to each
+other** (independent), but **M7 depends on M5** landing first. M2/M3/M4 are
+independent of M5/M6/M7 and may interleave freely.
+
+Work one PR per milestone (M2 may be one PR per block). Conventional commit
+messages. Ask nothing that this spec already answers; where the spec is
+silent on cosmetics, match existing style.
