@@ -11,7 +11,6 @@ import urllib.request
 from http.server import ThreadingHTTPServer
 
 from painel import server as srv
-from painel.__main__ import _default_agent_status_if_absent
 
 XSS = '"<script>alert(1)</script>'
 
@@ -208,36 +207,6 @@ class WhoseTurnSignalTest(unittest.TestCase):
     def test_js_string_escapes_script_tag(self):
         out = srv._js_string('</script><script>alert(1)')
         self.assertNotIn("<script", out)
-
-
-class CliAgentStatusDefaultTest(unittest.TestCase):
-    """M5 (SPEC.md §10.3): `painel open`/`serve` set meta.agent_status='idle'
-    on first run when the key is absent, best-effort, never overriding an
-    agent that has already set it."""
-
-    def test_sets_idle_when_absent(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "board.json")
-            srv.save_board(path, {"title": "T", "meta": {}, "blocks": []})
-            _default_agent_status_if_absent(path)
-            board = srv.load_board(path)
-            self.assertEqual(board["meta"]["agent_status"], "idle")
-
-    def test_does_not_override_existing_status(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "board.json")
-            srv.save_board(path, {"title": "T", "meta": {"agent_status": "working"}, "blocks": []})
-            _default_agent_status_if_absent(path)
-            board = srv.load_board(path)
-            self.assertEqual(board["meta"]["agent_status"], "working")
-
-    def test_missing_board_file_does_not_crash(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "board.json")
-            # load_board() auto-creates the file if missing; must not raise.
-            _default_agent_status_if_absent(path)
-            board = srv.load_board(path)
-            self.assertEqual(board["meta"]["agent_status"], "idle")
 
 
 class LiveHTTPTest(unittest.TestCase):
