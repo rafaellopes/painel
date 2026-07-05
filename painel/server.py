@@ -25,7 +25,7 @@ import os
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote, unquote
 
 from .blocks import REGISTRY
 from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
@@ -145,6 +145,15 @@ def _page_label(page) -> str:
     return page if page is not None else None  # resolved against board title by caller
 
 
+def _page_href(page) -> str:
+    """Friendly path-based URL for a page (§11.2): '/' for Home, '/<page>'
+    otherwise -- e.g. '/Estrat%C3%A9gia' instead of '/?page=Estrat%C3%A9gia'.
+    Browsers commonly render the percent-escaped UTF-8 back to readable
+    accented text in the address bar. `?page=` on '/' is still accepted by
+    do_GET for old bookmarked/shared links (see do_GET)."""
+    return "/" if page is None else f"/{quote(page, safe='')}"
+
+
 def _nav_html(board: dict, active_page) -> str:
     """Sidebar/dropdown nav (§11.2). Empty string when < 2 distinct pages --
     this is the backward-compat guarantee: pageless boards get zero nav markup."""
@@ -156,13 +165,12 @@ def _nav_html(board: dict, active_page) -> str:
     items = []
     for p in pages:
         name = board_title if p is None else p
-        href = "/" if p is None else f"/?page={e(p)}"
         cls = "nav-item active" if p == active_page else "nav-item"
         items.append(
-            f'<a class="{cls}" href="{href}">{e(name)}{_badge(counts.get(p, 0))}</a>'
+            f'<a class="{cls}" href="{e(_page_href(p))}">{e(name)}{_badge(counts.get(p, 0))}</a>'
         )
     options = "".join(
-        f'<option value="{e(p or "")}"{" selected" if p == active_page else ""}>'
+        f'<option value="{e(_page_href(p))}"{" selected" if p == active_page else ""}>'
         f'{e(board_title if p is None else p)}{_badge(counts.get(p, 0))}</option>'
         for p in pages
     )
@@ -170,7 +178,7 @@ def _nav_html(board: dict, active_page) -> str:
         '<nav class="pages-nav">'
         f'<div class="pages-sidebar">{"".join(items)}</div>'
         '<div class="pages-dropdown">'
-        f'<select onchange="location.href = this.value ? (\'/?page=\'+encodeURIComponent(this.value)) : \'/\';">'
+        '<select onchange="if (this.value) location.href = this.value;">'
         f'{options}</select></div>'
         '</nav>'
     )
@@ -265,8 +273,12 @@ def render(board: dict, active_page=None) -> str:
         links = []
         for bid, label in pending:
             p = block_page.get(str(bid))
-            href = f"?page={e(p)}#blk-{e(bid)}" if p is not None else f"#blk-{e(bid)}"
-            links.append(f'<a href="{href}">{e(label)}</a>')
+            # Always an absolute path + fragment (not a bare "#blk-id") so the
+            # link works regardless of which page is currently active -- a
+            # bare fragment previously failed silently when a Home-page item
+            # was pending while viewing a different page.
+            href = f"{_page_href(p)}#blk-{e(bid)}"
+            links.append(f'<a href="{e(href)}">{e(label)}</a>')
         attention = (
             f'<div class="attention"><span class="attention-count">{len(pending)}</span> '
             f'à tua espera: {" · ".join(links)}</div>'
@@ -320,8 +332,21 @@ class _Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
         if path == "/":
+            # Friendly path-based routing (§11.2): "/" is Home unless the
+            # old-style "?page=" query is present (kept for compatibility
+            # with any already-shared/bookmarked links from before this
+            # change -- see docs/SPEC.md §11.2).
             qs = parse_qs(parsed.query)
             active_page = qs.get("page", [None])[0]
+            with _lock:
+                board = load_board(self.board_path)
+            self._send(200, render(board, active_page).encode("utf-8"), "text/html; charset=utf-8")
+        elif path not in ("/version", "/event"):
+            # Any other path segment is treated as a page name, e.g.
+            # "/Estrat%C3%A9gia" -> page "Estratégia". render() already
+            # falls back to Home for a name that isn't a real page (covers
+            # stray requests like /favicon.ico harmlessly).
+            active_page = unquote(path.lstrip("/")) or None
             with _lock:
                 board = load_board(self.board_path)
             self._send(200, render(board, active_page).encode("utf-8"), "text/html; charset=utf-8")
@@ -396,7 +421,7 @@ def serve(board_path: str, port: int = 8765, open_browser: bool = False) -> None
     _Handler.board_path = board_path
     load_board(board_path)  # ensure file exists
     httpd = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
-    url = f"http://127.0.0.1:{port}/"
+    url = f"http://localhost:{port}/"  # friendlier than the raw IP; same loopback
     sys.stdout.write(f"READY {url} board={board_path}\n")
     sys.stdout.flush()
     if open_browser:

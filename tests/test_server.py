@@ -248,9 +248,21 @@ class LiveHTTPTest(unittest.TestCase):
         data = json.loads(body)
         self.assertIn("v", data)
 
-    def test_unknown_path_404(self):
+    def test_unknown_path_falls_back_to_home_not_404(self):
+        # Friendly path-based page routing means any GET path that isn't
+        # /version or /event is treated as a page name; a name that doesn't
+        # match any real page just falls back to Home (200), the same
+        # graceful-degradation spirit as unknown block types (docs/SPEC.md
+        # §0 point 5) -- it must not 404 or crash.
+        status, body = self._get("/nope")
+        self.assertEqual(status, 200)
+        self.assertIn(b"<!doctype html>", body)
+
+    def test_get_event_path_still_404s(self):
+        # /event is POST-only; a GET to it must not be swallowed by the
+        # page-route fallback.
         with self.assertRaises(urllib.error.HTTPError) as cm:
-            self._get("/nope")
+            self._get("/event")
         self.assertEqual(cm.exception.code, 404)
         cm.exception.close()
 

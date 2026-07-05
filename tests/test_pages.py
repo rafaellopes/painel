@@ -115,24 +115,36 @@ class MultiPageRenderTest(unittest.TestCase):
 
     def test_attention_bar_links_cross_pages(self):
         html = srv.render(_multi_page_board())  # active page = Home
-        # q2 lives on Financeiro and is pending -> its attention link must
-        # carry ?page=Financeiro plus the anchor.
-        self.assertIn('href="?page=Financeiro#blk-q2"', html)
+        # q2 lives on Financeiro and is pending -> its attention link is a
+        # friendly path, e.g. "/Financeiro#blk-q2", not "?page=...".
+        self.assertIn('href="/Financeiro#blk-q2"', html)
         # ck lives on Ops and is pending.
-        self.assertIn('href="?page=Ops#blk-ck"', html)
-        # q1 lives on Home (current page) -> plain anchor, no ?page=.
-        self.assertIn('href="#blk-q1"', html)
+        self.assertIn('href="/Ops#blk-ck"', html)
+        # q1 lives on Home -- always an absolute "/#blk-id", never a bare
+        # fragment, so the link works even when a different page is active.
+        self.assertIn('href="/#blk-q1"', html)
 
-    def test_nav_links_carry_page_query_param(self):
+    def test_nav_links_use_friendly_paths(self):
         html = srv.render(_multi_page_board())
-        self.assertIn('href="/?page=Financeiro"', html)
-        self.assertIn('href="/?page=Ops"', html)
-        self.assertIn('href="/"', html)  # Home link has no query param
+        self.assertIn('href="/Financeiro"', html)
+        self.assertIn('href="/Ops"', html)
+        self.assertIn('href="/"', html)  # Home link is just "/"
+        # No query-string page links anywhere in fresh nav markup.
+        self.assertNotIn("?page=", html.split("<nav")[1].split("</nav>")[0])
 
     def test_active_page_marked_in_nav(self):
         html = srv.render(_multi_page_board(), active_page="Ops")
         # The active nav item carries the "active" class.
-        self.assertIn('class="nav-item active" href="/?page=Ops"', html)
+        self.assertIn('class="nav-item active" href="/Ops"', html)
+
+    def test_page_name_with_special_chars_is_url_quoted(self):
+        board = _multi_page_board()
+        board["blocks"][0]["page"] = "Contas & Recibos"
+        html = srv.render(board)
+        # quote(..., safe='') percent-encodes space and "&"; the raw
+        # characters must never leak into an href attribute unescaped.
+        self.assertIn("Contas%20%26%20Recibos", html)
+        self.assertNotIn('href="/Contas & Recibos"', html)
 
 
 class HttpPageParamTest(unittest.TestCase):
@@ -176,6 +188,27 @@ class HttpPageParamTest(unittest.TestCase):
         body = self._get("/?page=Ops")
         self.assertIn("checklist", body)
         self.assertNotIn("Fin pergunta?", body)
+
+    def test_friendly_path_selects_financeiro(self):
+        body = self._get("/Financeiro")
+        self.assertIn("Fin pergunta?", body)
+        self.assertNotIn("Home pergunta?", body)
+
+    def test_friendly_path_selects_ops(self):
+        body = self._get("/Ops")
+        self.assertIn("checklist", body)
+        self.assertNotIn("Fin pergunta?", body)
+
+    def test_unknown_path_falls_back_to_home(self):
+        # e.g. a stray browser /favicon.ico request -- must not 404 or crash.
+        body = self._get("/favicon.ico")
+        self.assertIn("Home pergunta?", body)
+
+    def test_version_and_event_paths_are_not_treated_as_pages(self):
+        import json
+        body = self._get("/version")
+        payload = json.loads(body)
+        self.assertIn("pending", payload)  # confirms /version's own handler ran
 
 
 if __name__ == "__main__":

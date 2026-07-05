@@ -150,7 +150,7 @@ def cmd_open(board: str, port: int | None) -> int:
 
     info = _read_pidfile(board)
     if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
-        url = f"http://127.0.0.1:{info['port']}/"
+        url = f"http://localhost:{info['port']}/"
         print(f"pAInel já está a correr: {url}")
         webbrowser.open(url)
         return 0
@@ -166,7 +166,7 @@ def cmd_open(board: str, port: int | None) -> int:
     with open(_pidfile(board), "w", encoding="utf-8") as fh:
         json.dump({"pid": proc.pid, "port": chosen_port}, fh)
 
-    url = f"http://127.0.0.1:{chosen_port}/"
+    url = f"http://localhost:{chosen_port}/"
     for _ in range(50):
         if not _port_free(chosen_port):
             break
@@ -195,7 +195,7 @@ def cmd_stop(board: str) -> int:
 def cmd_status(board: str) -> int:
     info = _read_pidfile(board)
     if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
-        print(f"a correr em http://127.0.0.1:{info['port']}/  (pid {info['pid']})")
+        print(f"a correr em http://localhost:{info['port']}/  (pid {info['pid']})")
     else:
         print("parado.")
     return 0
