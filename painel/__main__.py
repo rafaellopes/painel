@@ -17,6 +17,8 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 import webbrowser
 
 from .server import serve, serve_hub, save_board, load_board
@@ -194,6 +196,24 @@ def _spawn_hub(port: int) -> int:
     return proc.pid
 
 
+def _is_our_hub(port: int) -> bool:
+    """Best-effort signature check: is whatever answers on `port` actually a
+    pAInel hub, or an unrelated service that happens to occupy the hub's
+    default port (8765 is a common low port -- collisions with something
+    else the user already runs there are entirely plausible, not hypothetical:
+    caught this exact case during dogfooding, port 8765 already held by an
+    unrelated project). A quick GET + title match, not a real handshake --
+    false negatives just mean an extra (harmless) stderr notice, never a
+    crash or a stolen port."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
+            body = r.read(4096).decode("utf-8", "ignore")
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return False
+    from .hub import STRINGS as HUB_STRINGS
+    return HUB_STRINGS["title"] in body
+
+
 def _ensure_hub_running(port: int = HUB_PORT) -> None:
     """Idempotent, same _spawn-family pattern as cmd_open's own board check
     (§13.2): if a hub is already alive on `port`, do nothing; otherwise start
@@ -203,7 +223,14 @@ def _ensure_hub_running(port: int = HUB_PORT) -> None:
         if inst.get("kind") == "hub" and inst["port"] == port:
             return
     if not _port_free(port):
-        return  # something else is already listening there -- don't fight it
+        if not _is_our_hub(port):
+            print(
+                f"aviso: a porta {port} já está ocupada por outro serviço -- "
+                f"o hub do pAInel não arrancou aí. Usa 'painel hub --port <N>' "
+                f"noutra porta se quiseres o hub mesmo assim.",
+                file=sys.stderr,
+            )
+        return  # either it's genuinely our hub already, or something else we won't fight
     _spawn_hub(port)
     _wait_until_listening(port)
 

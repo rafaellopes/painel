@@ -209,5 +209,115 @@ class RestartAllHubVsBoardTest(_FakeHomeMixin, unittest.TestCase):
         self.assertIn(("hub", 9002), calls)
 
 
+class ForeignServiceOnHubPortTest(_FakeHomeMixin, unittest.TestCase):
+    """Real bug, caught during dogfooding (2026-07-06): port 8765 (the hub's
+    default) was already occupied by an unrelated pre-existing service on
+    the machine. _ensure_hub_running silently treated "port not free" as
+    "our hub must already be there" and did nothing -- correct in NOT
+    stealing the port, but wrong in giving no signal that the hub simply
+    never started. These tests exercise the fix: a lightweight signature
+    check (_is_our_hub) that tells a genuine pAInel hub apart from any other
+    service holding the port."""
+
+    def _serve_real_hub_in_thread(self, port):
+        import threading
+        from http.server import ThreadingHTTPServer
+        from painel.server import _HubHandler
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), _HubHandler)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        return httpd, thread
+
+    def test_is_our_hub_true_for_a_genuine_hub(self):
+        httpd, thread = self._serve_real_hub_in_thread(0)
+        port = httpd.server_address[1]
+        try:
+            self.assertTrue(cli._is_our_hub(port))
+        finally:
+            httpd.shutdown()
+            thread.join()
+            httpd.server_close()
+
+    def test_is_our_hub_false_for_a_non_http_occupant(self):
+        # A raw TCP listener that never speaks HTTP -- the exact shape of an
+        # unrelated service (like the one that collided with 8765 in
+        # dogfooding) squatting on the hub's port.
+        s, port = _occupy_port()
+        try:
+            self.assertFalse(cli._is_our_hub(port))
+        finally:
+            s.close()
+
+    def test_is_our_hub_false_for_an_http_server_with_different_content(self):
+        import threading
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        class _OtherService(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_GET(self):
+                body = b"<html><title>Pulsia</title>Not pAInel at all</html>"
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html")
+                self.end_headers()
+                self.wfile.write(body)
+
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), _OtherService)
+        port = httpd.server_address[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            self.assertFalse(cli._is_our_hub(port))
+        finally:
+            httpd.shutdown()
+            thread.join()
+            httpd.server_close()
+
+    def test_ensure_hub_running_does_not_steal_a_foreign_port(self):
+        # A foreign occupant on the hub's default port: _ensure_hub_running
+        # must not attempt to spawn a second process on that same port.
+        s, port = _occupy_port()
+        spawn_calls = []
+        orig_spawn_hub = cli._spawn_hub
+        cli._spawn_hub = lambda p: spawn_calls.append(p)
+        try:
+            cli._ensure_hub_running(port=port)
+            self.assertEqual(spawn_calls, [])  # never tried to bind an occupied port
+        finally:
+            cli._spawn_hub = orig_spawn_hub
+            s.close()
+
+    def test_ensure_hub_running_warns_on_stderr_for_a_foreign_occupant(self):
+        import io
+        import contextlib
+        s, port = _occupy_port()
+        orig_spawn_hub = cli._spawn_hub
+        cli._spawn_hub = lambda p: None
+        try:
+            captured = io.StringIO()
+            with contextlib.redirect_stderr(captured):
+                cli._ensure_hub_running(port=port)
+            self.assertIn("já está ocupada", captured.getvalue())
+        finally:
+            cli._spawn_hub = orig_spawn_hub
+            s.close()
+
+    def test_ensure_hub_running_silent_when_a_genuine_hub_is_already_there(self):
+        import io
+        import contextlib
+        httpd, thread = self._serve_real_hub_in_thread(0)
+        port = httpd.server_address[1]
+        try:
+            captured = io.StringIO()
+            with contextlib.redirect_stderr(captured):
+                cli._ensure_hub_running(port=port)
+            self.assertEqual(captured.getvalue(), "")  # no false-alarm warning
+        finally:
+            httpd.shutdown()
+            thread.join()
+            httpd.server_close()
+
+
 if __name__ == "__main__":
     unittest.main()
