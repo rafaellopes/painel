@@ -145,6 +145,125 @@ class EventDispatchTest(unittest.TestCase):
             self.assertEqual(board["blocks"][0]["answer"], "42")
 
 
+class ChangeRequestTest(unittest.TestCase):
+    """M8 (docs/SPEC.md §12): universal change_request event, generic ✎
+    per-block button, global affordance, change_requests card rendering, and
+    the attention-bar exclusion."""
+
+    def _handler_apply(self, board_path, data):
+        srv._Handler.board_path = board_path
+        h = srv._Handler.__new__(srv._Handler)
+        return h._apply(data)
+
+    def test_change_request_per_block_appends_and_not_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            srv.save_board(path, {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}]})
+            silent = self._handler_apply(
+                path, {"event": "change_request", "block": "regras", "value": "o prazo passa a 12h"}
+            )
+            self.assertFalse(silent)
+            board = srv.load_board(path)
+            self.assertEqual(len(board["change_requests"]), 1)
+            cr = board["change_requests"][0]
+            self.assertEqual(cr["block"], "regras")
+            self.assertEqual(cr["text"], "o prazo passa a 12h")
+            self.assertEqual(cr["status"], "open")
+
+    def test_change_request_global_block_null_appends_and_not_silent(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            srv.save_board(path, {"blocks": []})
+            silent = self._handler_apply(
+                path, {"event": "change_request", "block": None, "value": "adiciona fase de testes"}
+            )
+            self.assertFalse(silent)
+            board = srv.load_board(path)
+            self.assertEqual(len(board["change_requests"]), 1)
+            self.assertIsNone(board["change_requests"][0]["block"])
+            self.assertEqual(board["change_requests"][0]["text"], "adiciona fase de testes")
+
+    def test_change_requests_persist_and_get_stable_ids(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            srv.save_board(path, {"blocks": []})
+            self._handler_apply(path, {"event": "change_request", "block": None, "value": "primeiro"})
+            self._handler_apply(path, {"event": "change_request", "block": None, "value": "segundo"})
+            board = srv.load_board(path)
+            ids = [cr["id"] for cr in board["change_requests"]]
+            self.assertEqual(len(ids), 2)
+            self.assertEqual(len(set(ids)), 2)
+
+    def test_ico_button_appears_on_every_block_type_generically(self):
+        # Every block type gets the ✎ button purely from render()'s wrapper
+        # injection -- not from any blocks/*.py module.
+        board = {"blocks": [
+            {"id": "h1", "type": "heading", "text": "x"},
+            {"id": "m1", "type": "markdown", "text": "x"},
+            {"id": "n1", "type": "note", "text": "x"},
+            {"id": "tk", "type": "tasks", "title": "t", "items": []},
+            {"id": "lg", "type": "log", "title": "t", "entries": []},
+            {"id": "q1", "type": "question", "prompt": "?", "answer": None},
+        ]}
+        html = srv.render(board)
+        for bid in ("h1", "m1", "n1", "tk", "lg", "q1"):
+            self.assertIn(f"crToggle('{bid}')", html)
+            self.assertIn(f'id="cr-box-{bid}"', html)
+
+    def test_global_affordance_present(self):
+        html = srv.render({"blocks": []})
+        self.assertIn("crToggleGlobal()", html)
+        self.assertIn('id="cr-box-global"', html)
+        self.assertIn("crSendGlobal()", html)
+        self.assertIn("Pedir alteração", html)
+
+    def test_open_change_requests_render_as_own_card(self):
+        board = {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}],
+                 "change_requests": [
+                     {"id": "cr1", "block": "regras", "text": "o prazo passa a 12h", "status": "open", "ts": ""},
+                 ]}
+        html = srv.render(board)
+        self.assertIn('class="card cr-card"', html)
+        self.assertIn("Pedidos em aberto", html)
+        self.assertIn("o prazo passa a 12h", html)
+        self.assertIn("#blk-regras", html)
+
+    def test_declined_or_done_change_requests_not_rendered(self):
+        board = {"blocks": [], "change_requests": [
+            {"id": "cr1", "block": None, "text": "already done", "status": "done", "ts": ""},
+            {"id": "cr2", "block": None, "text": "declined one", "status": "declined", "ts": ""},
+        ]}
+        html = srv.render(board)
+        self.assertNotIn('class="card cr-card"', html)
+        self.assertNotIn("already done", html)
+        self.assertNotIn("declined one", html)
+
+    def test_open_change_requests_do_not_appear_in_attention_bar(self):
+        # Critical (docs/SPEC.md §12.4): an open change request is something
+        # the AGENT owes a resolution to, not the human -- it must never
+        # show up in _needs_user()'s output nor in the human-facing
+        # attention bar, mirroring M7/chat.py's identical reasoning for an
+        # unanswered user chat message.
+        board = {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}],
+                 "change_requests": [
+                     {"id": "cr1", "block": "regras", "text": "muda isto", "status": "open", "ts": ""},
+                 ]}
+        self.assertEqual(srv._needs_user(board), [])
+        html = srv.render(board)
+        self.assertNotIn('class="attention"', html)
+        # The card itself is still present (standing record) -- just not
+        # counted/linked from the attention bar.
+        self.assertIn('class="card cr-card"', html)
+
+    def test_escaping_regression_in_change_request_text(self):
+        board = {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}],
+                 "change_requests": [
+                     {"id": "cr1", "block": "regras", "text": XSS, "status": "open", "ts": ""},
+                 ]}
+        html = srv.render(board)
+        self.assertNotIn("<script>alert(1)</script>", html)
+
+
 class WhoseTurnSignalTest(unittest.TestCase):
     """M5 (SPEC.md §10): meta.agent_status drives <title>/favicon/chip."""
 

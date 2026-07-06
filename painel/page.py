@@ -122,6 +122,15 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
 .status-chip {{ display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
+/* --- Change requests (M8, docs/SPEC.md §12) -- generic per-block ✎ button
+   + inline box injected by render() itself (not by any blocks/*.py module),
+   plus the global affordance and the "Pedidos em aberto" card. --- */
+.block-actions {{ display:flex; justify-content:flex-end; gap:.15rem; margin-bottom:.3rem; }}
+.cr-box {{ margin-bottom:.6rem; }}
+.cr-card ul.log a {{ color:var(--accent); text-decoration:underline; font-size:.82rem; }}
+.cr-global {{ margin:1.5rem 0; text-align:center; }}
+.cr-global button.ico {{ font-size:.8rem; padding:.4rem .8rem; }}
+.cr-global .cr-box {{ text-align:left; max-width:520px; margin:.5rem auto 0; }}
 /* --- chat block (M7, docs/SPEC.md §5.5) -- reuses .thread-msg(s) above --- */
 .chat-card h3 {{ display:flex; align-items:center; justify-content:space-between; gap:.5rem; }}
 .chat-chip {{ margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
@@ -153,6 +162,13 @@ body.has-nav {{ max-width:1040px; }}
   <div id="status-chip" class="status-chip">{status_chip}</div>
 </header>
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
+<div class="cr-global">
+  <button class="ico" title="Pedir alteração, nova tarefa, ou rever algo" onclick="crToggleGlobal()">&#10133; Pedir alteração, nova tarefa, ou rever algo</button>
+  <div id="cr-box-global" class="cr-box" style="display:none">
+    <textarea id="cr-ta-global" data-orig="" placeholder="O que precisas de pedir?"></textarea>
+    <button onclick="crSendGlobal()">Enviar pedido</button>
+  </div>
+</div>
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
 async function send(payload) {{
@@ -162,6 +178,45 @@ async function send(payload) {{
   }} catch (e) {{}}
 }}
 function reloadSoon() {{ knownVersion = null; setTimeout(() => location.reload(), 250); }}
+
+// --- Change requests (M8, docs/SPEC.md §12) ---------------------------------
+// Generic per-block ✎ box (server-injected wrapper markup, not per-block-
+// module) + the global "Pedir alteração" affordance. Open/closed state
+// persists across polls/reloads via sessionStorage, same pattern as plan's
+// open-threads (§1 / planToggleThread above).
+function _openCrBoxes() {{
+  try {{ return new Set(JSON.parse(sessionStorage.getItem('openCrBoxes') || '[]')); }}
+  catch (e) {{ return new Set(); }}
+}}
+function _saveCrBoxes(s) {{ sessionStorage.setItem('openCrBoxes', JSON.stringify([...s])); }}
+function _crToggleBox(key) {{
+  const box = document.getElementById('cr-box-' + key);
+  if (!box) return;
+  const opening = (box.style.display === 'none' || !box.style.display);
+  box.style.display = opening ? 'block' : 'none';
+  const open = _openCrBoxes();
+  if (opening) open.add(key); else open.delete(key);
+  _saveCrBoxes(open);
+}}
+function crToggle(bid) {{ _crToggleBox(bid); }}
+function crToggleGlobal() {{ _crToggleBox('global'); }}
+function crSend(bid) {{
+  const ta = document.getElementById('cr-ta-' + bid);
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({{event:'change_request', block:bid, value:v}}).then(reloadSoon);
+}}
+function crSendGlobal() {{
+  const ta = document.getElementById('cr-ta-global');
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({{event:'change_request', block:null, value:v}}).then(reloadSoon);
+}}
+// Re-open ✎ boxes the user had open before the last reload.
+for (const key of _openCrBoxes()) {{
+  const box = document.getElementById('cr-box-' + key);
+  if (box) box.style.display = 'block';
+}}
 {block_js}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic

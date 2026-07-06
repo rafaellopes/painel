@@ -86,7 +86,13 @@ def _block_html(b: dict, ctx: dict) -> str:
 
 
 def _needs_user(board: dict) -> list:
-    """Everything currently waiting on the human: (block_id, short label)."""
+    """Everything currently waiting on the human: (block_id, short label).
+
+    Open change requests (docs/SPEC.md §12.4) are deliberately NOT included
+    here: an open change request is something the AGENT owes a resolution
+    to, mirroring the same reasoning M7/chat.py already applies to an
+    unanswered user message -- it's the agent's turn, not the human's, so it
+    must never appear in this human-facing attention bar."""
     out = []
     for b in board.get("blocks", []):
         mod = REGISTRY.get(b.get("type"))
@@ -94,6 +100,56 @@ def _needs_user(board: dict) -> list:
             continue
         out.extend(mod.needs_user(b))
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Change requests (M8, docs/SPEC.md §12)                                      #
+# --------------------------------------------------------------------------- #
+def _open_change_requests(board: dict) -> list:
+    return [cr for cr in board.get("change_requests", []) if cr.get("status", "open") == "open"]
+
+
+def _append_change_request(board: dict, data: dict) -> dict:
+    """Append one entry to the board-level change_requests array (§12.1).
+    Not stored on any block -- it survives even if the referenced block is
+    later removed/changed. `ts` is left to the agent to fill in later (the
+    server does not generate timestamps, matching every other event in this
+    codebase); a numeric, monotonic `id` is generated here purely so the
+    agent has something stable to reference when flipping `status`."""
+    crs = board.setdefault("change_requests", [])
+    cr = {
+        "id": f"cr{len(crs) + 1}",
+        "block": data.get("block"),
+        "text": data.get("value", ""),
+        "status": "open",
+        "ts": "",
+    }
+    crs.append(cr)
+    return cr
+
+
+def _change_requests_html(board: dict) -> str:
+    """'Pedidos em aberto' card (§12.4) -- board-level rendering, not a
+    blocks/*.py module, since change_requests is board-level state, not a
+    block. Reuses log-block-style rows conceptually."""
+    open_crs = _open_change_requests(board)
+    if not open_crs:
+        return ""
+    block_page = {str(b.get("id")): b.get("page") for b in board.get("blocks", [])}
+    rows = []
+    for cr in open_crs:
+        text = e(cr.get("text", ""))
+        bid = cr.get("block")
+        if bid:
+            href = f"{_page_href(block_page.get(str(bid)))}#blk-{e(bid)}"
+            link = f' <a href="{e(href)}">→ {e(bid)}</a>'
+        else:
+            link = ""
+        rows.append(f"<li>{text}{link}</li>")
+    return (
+        '<div class="card cr-card"><h3>Pedidos em aberto</h3>'
+        f'<ul class="log">{"".join(rows)}</ul></div>'
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -240,6 +296,24 @@ def _whose_turn(board: dict, blocks_html: str, pending_count: int) -> dict:
     return {"pending": pending_count, "agent_status": agent_status, "has_resolved": has_resolved}
 
 
+def _change_request_box_html(block_id) -> str:
+    """The generic ✎ 'Pedir alteração' button + inline collapsed box injected
+    into every block's wrapper div by render() itself -- NOT by any
+    blocks/*.py module, reusing §6.5's exact generic-wrapper reasoning so
+    every block type, present and future, gets this for free (docs/SPEC.md
+    §12.2). Same show/hide + data-orig conventions as plan.py's ✎ edit box."""
+    bid = e(block_id)
+    return (
+        f'<div class="block-actions">'
+        f'<button class="ico" title="Pedir alteração" onclick="crToggle(\'{bid}\')">&#9998;</button>'
+        f'</div>'
+        f'<div id="cr-box-{bid}" class="cr-box" style="display:none">'
+        f'<textarea id="cr-ta-{bid}" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea>'
+        f'<button onclick="crSend(\'{bid}\')">Enviar pedido</button>'
+        f'</div>'
+    )
+
+
 def render(board: dict, active_page=None) -> str:
     all_blocks = board.get("blocks", [])
     pages = _pages(board)
@@ -264,9 +338,15 @@ def render(board: dict, active_page=None) -> str:
         f'<div id="blk-{e(b.get("id", ""))}"'
         f'{" class=\"needs-user\"" if str(b.get("id")) in pending_ids else ""}>'
         f'{_block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})}'
+        f'{_change_request_box_html(b.get("id", ""))}'
         f'</div>'
         for i, b in enumerate(blocks_list)
     )
+    # Open change requests card (§12.4) -- board-level state, only shown on
+    # Home so it doesn't repeat identically on every page of a multi-page
+    # board (its rows already link cross-page via _page_href when relevant).
+    if active_page is None:
+        blocks += _change_requests_html(board)
     meta = board.get("meta", {})
     metaline = " · ".join(
         filter(None, [
@@ -404,6 +484,15 @@ class _Handler(BaseHTTPRequestHandler):
         silent = False
         with _lock:
             board = load_board(self.board_path)
+            if ev == "change_request":
+                # Universal event (docs/SPEC.md §12.1) -- not addressed to a
+                # block module at all (block may be null for the global
+                # affordance, §12.3), so it's handled here directly rather
+                # than dispatched through a block's apply(). Never silent:
+                # the entire point is that this reaches the agent.
+                _append_change_request(board, data)
+                save_board(self.board_path, board)
+                return False
             blk = _find(board, data.get("block"))
             if blk is not None:
                 mod = REGISTRY.get(blk.get("type"))

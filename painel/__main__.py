@@ -88,6 +88,10 @@ def _demo_board() -> dict:
                 {"from": "agent", "text": "Porque **X** evita Y — ver decisão em Registo."},
             ]},
         ],
+        "change_requests": [
+            {"id": "cr1", "block": "pl", "text": "adiciona uma fase de testes com utilizadores",
+             "status": "open", "ts": "10:05"},
+        ],
     }
 
 

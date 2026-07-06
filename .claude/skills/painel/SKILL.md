@@ -54,6 +54,8 @@ Events look like:
 {"event":"plan_edit", "block":"pl", "item":"p3", "value":"new text"}
 {"event":"plan_skip", "block":"pl", "item":"p1"}
 {"event":"plan_move", "block":"pl", "item":"p3", "direction":"up"}
+{"event":"change_request", "block":"regras", "value":"o prazo passa a 12h"}
+{"event":"change_request", "block":null, "value":"adiciona uma fase de testes com utilizadores"}
 ```
 
 `plan_play` is a priority override: the user is telling you to drop what's queued and
@@ -103,13 +105,49 @@ hunting for it — pAInel underlines this by generating an anchor id per block
 This is just a convention (no special pAInel endpoint) — build the URL from the
 port `painel open`/`serve` printed and the block's `id`.
 
+## Change requests — the human initiates something
+
+Every block gets a small ✎ button for free (you never add this yourself —
+pAInel injects it into every card), plus a persistent "➕ Pedir alteração,
+nova tarefa, ou rever algo" affordance near the bottom of the page. Both
+post the same event:
+
+```json
+{"event":"change_request", "block":"regras", "value":"o prazo passa a 12h"}
+{"event":"change_request", "block":null,     "value":"adiciona uma fase de testes"}
+```
+
+`block` is the id of the card the ✎ was clicked on, or `null`/absent for the
+global affordance. pAInel appends every one of these to a board-level
+`change_requests` array for you — `{"id":"cr1","block":"regras","text":"...",
+"status":"open","ts":"..."}` — you don't create this array yourself, just
+read and resolve it. **This is not silent** — it reaches you the same way
+every other event does, and it does **not** show up in the human-facing
+attention bar (that bar is only for what's waiting on the human; an open
+change request is something *you* owe a resolution to).
+
+On receiving `change_request`:
+1. If the request is clear enough to act on immediately, **apply it** —
+   edit the relevant block(s), or add/adjust whatever it's asking for.
+2. If it's ambiguous, **ask one clarifying question** as a proper
+   `question`/`choice` block (never just in chat).
+3. Once resolved, edit that entry in `change_requests` directly: set
+   `"status"` to `"done"` or `"declined"` and add a one-line reason (there's
+   no separate event for this — you resolve it the same way you resolve any
+   other board state, by editing `board.json`).
+4. Log the outcome in the `log` block.
+
+Never resolve a change request purely by replying in chat — the resolution
+belongs on the board, exactly like every other interaction.
+
 ## Board schema
 
 ```json
 {
   "title": "Session title",
   "meta": { "project": "name", "updated_at": "2026-07-02 21:00", "agent_status": "working" },
-  "blocks": [ /* ordered, each with a unique "id" and a "type" */ ]
+  "blocks": [ /* ordered, each with a unique "id" and a "type" */ ],
+  "change_requests": [ /* pAInel appends here on every change_request event; you resolve status */ ]
 }
 ```
 
@@ -167,3 +205,6 @@ justify it.
   tell the human whose turn it is without them switching tabs to check.
 - When something needs the human, echo the direct anchor link (`👉 URL#blk-<id>`)
   in your own chat output too — don't make them scroll pAInel to find it.
+- Never leave a `change_request` unresolved — always flip its `status` to
+  `"done"`/`"declined"` with a one-line reason once handled, and log the
+  outcome. Resolving it only in chat doesn't count.
