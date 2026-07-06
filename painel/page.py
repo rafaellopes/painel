@@ -132,6 +132,14 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
   background:var(--blocked); margin-left:.25rem; vertical-align:top; }}
 @keyframes pulse {{ 0%,100% {{ box-shadow:0 0 0 0 rgba(125,211,252,.5); }}
   50% {{ box-shadow:0 0 0 5px rgba(125,211,252,0); }} }}
+/* --- Tab hygiene (M10, docs/SPEC.md §14.1) -- duplicate-tab self-close ---
+   The surviving/original tab reuses the exact same `pulse` keyframes above
+   (not a second, near-duplicate animation) applied to the header, so a
+   duplicate-open attempt draws the eye without any new CSS. */
+header.dup-pulse {{ animation:pulse 1.6s ease-in-out infinite; border-radius:10px; }}
+#dup-notice {{ display:none; position:fixed; top:1rem; left:50%; transform:translateX(-50%);
+  background:var(--wip); color:#1a1a1a; padding:.6rem 1.1rem; border-radius:10px;
+  font-size:.88rem; font-weight:600; box-shadow:0 4px 14px rgba(0,0,0,.3); z-index:100; }}
 footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5rem; }}
 .status-chip {{ display:inline-block; margin-top:.35rem; padding:.2rem .6rem; border-radius:999px;
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
@@ -171,8 +179,9 @@ body.has-nav {{ max-width:1040px; }}
   .pages-dropdown {{ display:block; margin-bottom:1rem; }}
 }}
 </style></head><body{nav_class}>
+<div id="dup-notice">👉 já tens este pAInel aberto — a fechar este separador</div>
 {attention}
-<header>
+<header id="page-header">
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
   <div id="status-chip" class="status-chip">{status_chip}</div>
@@ -188,6 +197,44 @@ async function send(payload) {{
   }} catch (e) {{}}
 }}
 function reloadSoon() {{ knownVersion = null; setTimeout(() => location.reload(), 250); }}
+
+// --- Tab hygiene (M10, docs/SPEC.md §14.1) ----------------------------------
+// Duplicate-tab self-close via BroadcastChannel. The channel name is derived
+// client-side from location.port -- stable per INSTANCE (the port is the
+// instance identity, §6.6), not per board path, and needs zero new
+// server-side plumbing (render()/context unchanged). Every page pAInel
+// serves (board pages and the hub) includes this, since both are pages a
+// human might open twice via `painel open`/hub bookmarking.
+(function() {{
+  if (typeof BroadcastChannel === 'undefined') return;  // graceful no-op on ancient browsers
+  const channelName = 'painel-' + (location.port || '80');
+  const bc = new BroadcastChannel(channelName);
+  let answered = false;
+  bc.onmessage = (ev) => {{
+    const msg = ev.data || {{}};
+    if (msg.type === 'announce') {{
+      // Someone else just opened a tab for this same instance -- I was here
+      // first, so I reply to say so, and pulse to draw the eye.
+      bc.postMessage({{type: 'already-open'}});
+      const hdr = document.getElementById('page-header');
+      if (hdr) {{
+        hdr.classList.add('dup-pulse');
+        setTimeout(() => hdr.classList.remove('dup-pulse'), 3200);
+      }}
+    }} else if (msg.type === 'already-open' && !answered) {{
+      // I'm the newer tab -- someone answered my announce, so I'm the
+      // duplicate. Show the notice, then self-close (only works for tabs
+      // opened by script, e.g. webbrowser.open() from `painel open`/hub --
+      // if the browser refuses for a manually-typed URL, window.close() is
+      // a silent no-op and the notice just stays up; no retry/workaround).
+      answered = true;
+      const notice = document.getElementById('dup-notice');
+      if (notice) notice.style.display = 'block';
+      setTimeout(() => {{ window.close(); }}, 1500);
+    }}
+  }};
+  bc.postMessage({{type: 'announce'}});
+}})();
 
 // --- Change requests (M8, docs/SPEC.md §12) ---------------------------------
 // Generic per-block ✎ box (server-injected wrapper markup, not per-block-

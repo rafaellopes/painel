@@ -111,6 +111,28 @@ hunting for it — pAInel underlines this by generating an anchor id per block
 This is just a convention (no special pAInel endpoint) — build the URL from the
 port `painel open`/`serve` printed and the block's `id`.
 
+### The chat-pointer convention — don't restate the board in chat
+
+Once something is represented on the board, your own chat reply about it
+should be **one line plus the deep link above** — not a restated copy of the
+board's content. The board is the single source of truth for state; the chat
+is for conversation and for whatever doesn't have a board representation yet.
+
+```
+👉 http://127.0.0.1:8765/#blk-q1
+```
+
+is the whole reply — not a paragraph re-explaining the question you just put
+in a `question` block, and not a bullet list re-describing three `choice`
+blocks you already composed. A real dogfooding session hit exactly this
+failure: the agent described three pending decisions in full prose in the
+chat **and** had them as proper `choice`/`question` blocks on the board at
+the same time. The duplication made the board feel optional/skippable — the
+human could just read the chat and never open the tab, which defeats the
+entire point of having a second interface. If you catch yourself writing
+more than the one-line-plus-link about something already on the board, stop
+and cut it back to the pointer.
+
 ## Change requests — the human initiates something
 
 Every block gets a small ✎ button for free (you never add this yourself —
