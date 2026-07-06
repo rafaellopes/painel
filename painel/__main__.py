@@ -156,6 +156,7 @@ def _spawn(board: str, port: int) -> int:
     )
     with open(_pidfile(board), "w", encoding="utf-8") as fh:
         json.dump({"pid": proc.pid, "port": port}, fh)
+    _write_registry(proc.pid, port, board)
     return proc.pid
 
 
@@ -199,6 +200,8 @@ def cmd_stop(board: str) -> int:
             os.kill(pid, 15)
         except OSError:
             pass
+    if "port" in info:
+        _remove_registry(info["port"])
     os.remove(_pidfile(board))
     print("parado.")
     return 0
@@ -213,99 +216,74 @@ def cmd_status(board: str) -> int:
     return 0
 
 
-def _proc_cwd(pid: int) -> str | None:
-    """Best-effort cwd of a running process (POSIX only -- macOS via lsof,
-    Linux via /proc). Used only by restart-all's discovery; failures just
-    mean that instance is skipped, never a crash."""
-    proc_path = f"/proc/{pid}/cwd"
-    if os.path.exists(proc_path):
-        try:
-            return os.readlink(proc_path)
-        except OSError:
-            return None
+def _registry_dir() -> str:
+    """Central, machine-wide record of every instance _spawn() has started,
+    one small JSON file per port. This exists ONLY so restart-all can find
+    every running instance without hunting down per-project pidfiles or
+    parsing `ps` output -- an earlier version tried the latter and broke on
+    any board path containing a space (e.g. Google Drive's "Meu Drive"),
+    since `ps`'s printed command line has no reliable way to tell "a space
+    inside one argument" from "a space between two arguments" once the
+    kernel's argv boundaries are gone. A file per port sidesteps that
+    entirely: the board path is read back as a JSON string, never
+    reconstructed from shell text."""
+    d = os.path.join(os.path.expanduser("~"), ".painel", "instances")
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def _registry_path(port: int) -> str:
+    return os.path.join(_registry_dir(), f"{port}.json")
+
+
+def _write_registry(pid: int, port: int, board: str) -> None:
+    with open(_registry_path(port), "w", encoding="utf-8") as fh:
+        json.dump({"pid": pid, "port": port, "board": os.path.abspath(board)}, fh)
+
+
+def _remove_registry(port: int) -> None:
     try:
-        out = subprocess.run(
-            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout
-        for line in out.splitlines():
-            if line.startswith("n"):
-                return line[1:]
-    except (OSError, subprocess.SubprocessError):
+        os.remove(_registry_path(port))
+    except OSError:
         pass
-    return None
-
-
-def _parse_ps_serve_lines(ps_output: str, cwd_resolver=None) -> list[dict]:
-    """Pure parsing of `ps -eo pid=,command=` output into
-    [{"pid", "board", "port"}] for every live `... -m painel serve <board>
-    --port <N>` process. `cwd_resolver(pid) -> str|None` is injectable for
-    tests; defaults to `_proc_cwd`. A line that can't be fully parsed (odd
-    quoting, missing --port, unresolvable relative board path) is skipped,
-    never guessed at or raised."""
-    if cwd_resolver is None:
-        cwd_resolver = _proc_cwd
-    found = []
-    for line in ps_output.splitlines():
-        line = line.strip()
-        if " -m painel serve " not in line and "painel serve " not in line:
-            continue
-        parts = line.split(None, 1)
-        if len(parts) != 2:
-            continue
-        try:
-            pid = int(parts[0])
-        except ValueError:
-            continue
-        args = parts[1].split()
-        if "serve" not in args:
-            continue
-        i = args.index("serve")
-        board_arg = args[i + 1] if i + 1 < len(args) else None
-        port = None
-        if "--port" in args:
-            j = args.index("--port")
-            if j + 1 < len(args):
-                try:
-                    port = int(args[j + 1])
-                except ValueError:
-                    port = None
-        if not board_arg or port is None:
-            continue
-        board_path = board_arg
-        if not os.path.isabs(board_path):
-            cwd = cwd_resolver(pid)
-            if cwd is None:
-                continue  # can't resolve a relative path without the cwd -- skip, don't guess
-            board_path = os.path.join(cwd, board_arg)
-        found.append({"pid": pid, "board": board_path, "port": port})
-    # Only one process can really be bound to a given port; if the process
-    # table momentarily shows two (a crashed-and-relaunched instance whose
-    # old entry hasn't been reaped yet, or leftover test debris), restarting
-    # each independently races to rebind the same port and can orphan one of
-    # them outside any pidfile. Keep a single entry per port -- the highest
-    # pid, i.e. the most recently started one, is the most likely survivor.
-    by_port = {}
-    for f in found:
-        prev = by_port.get(f["port"])
-        if prev is None or f["pid"] > prev["pid"]:
-            by_port[f["port"]] = f
-    return list(by_port.values())
 
 
 def _discover_running_boards() -> list[dict]:
-    """Find every live `python -m painel serve <board> --port <N>` process on
-    this machine, regardless of which project/terminal/agent started it, by
-    scanning the process table -- there is no central registry of running
-    boards (each lives in its own project dir's <board>.pid). Returns
-    [{"pid", "board", "port"}] with `board` resolved to an absolute path."""
+    """Every instance _spawn() has ever started that is still actually alive
+    right now (pid alive AND its port no longer free) -- reads the central
+    registry (see _registry_dir), not the process table. A registry entry
+    whose process has since died is stale and removed on sight (self-healing:
+    no manual cleanup needed as instances come and go). Returns
+    [{"pid", "board", "port"}]."""
+    found = []
+    d = _registry_dir()
     try:
-        out = subprocess.run(
-            ["ps", "-eo", "pid=,command="], capture_output=True, text=True, timeout=5,
-        ).stdout
-    except (OSError, subprocess.SubprocessError):
+        names = os.listdir(d)
+    except OSError:
         return []
-    return _parse_ps_serve_lines(out)
+    for name in names:
+        if not name.endswith(".json"):
+            continue
+        path = os.path.join(d, name)
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                entry = json.load(fh)
+            pid, port, board = entry["pid"], entry["port"], entry["board"]
+        except (OSError, json.JSONDecodeError, KeyError, TypeError):
+            _try_remove(path)
+            continue
+        if _pid_alive(pid) and not _port_free(port):
+            found.append({"pid": pid, "board": board, "port": port})
+        else:
+            _try_remove(path)  # stale -- that instance is gone
+    return found
+
+
+def _try_remove(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def cmd_restart_all() -> int:

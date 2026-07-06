@@ -2,6 +2,7 @@
 meta.agent_status="idle" on first run when the key is absent, best-effort."""
 import json
 import os
+import socket
 import tempfile
 import unittest
 
@@ -58,69 +59,74 @@ class DefaultAgentStatusTest(unittest.TestCase):
 
 
 class DiscoverRunningBoardsTest(unittest.TestCase):
-    """restart-all's process-table parsing (Rafael's request: whenever a new
-    painel version ships, restart every running instance so it's picked up
-    everywhere, not just the project being worked on)."""
+    """restart-all's discovery (Rafael's request: whenever a new painel
+    version ships, restart every running instance so it's picked up
+    everywhere, not just the project being worked on).
 
-    def test_parses_absolute_board_path(self):
-        line = "12345 /usr/bin/python3 -m painel serve /Users/x/proj/.painel-board.json --port 8766"
-        found = cli._parse_ps_serve_lines(line)
-        self.assertEqual(found, [
-            {"pid": 12345, "board": "/Users/x/proj/.painel-board.json", "port": 8766}
-        ])
+    Discovery reads a central per-port registry (~/.painel/instances/) that
+    _spawn() writes -- NOT `ps` output. An earlier version parsed `ps`
+    command lines and broke on any board path containing a space (e.g.
+    Google Drive's "Meu Drive", which is where most of Rafael's real
+    projects live) -- printed argv has no reliable boundary between "a
+    space inside one argument" and "a space between two arguments" once the
+    kernel's original argv array is gone. These tests use a real (but truly
+    idle, never-actually-alive) pid -- os.getpid() is alive but its
+    "port" is deliberately left occupied/free as needed per test -- to
+    exercise the actual registry-reading code path, not a mock."""
 
-    def test_resolves_relative_board_path_via_cwd_resolver(self):
-        line = "999 python3 -m painel serve .painel-board.json --port 8770"
-        found = cli._parse_ps_serve_lines(line, cwd_resolver=lambda pid: "/Users/x/other-proj")
-        self.assertEqual(found, [
-            {"pid": 999, "board": "/Users/x/other-proj/.painel-board.json", "port": 8770}
-        ])
+    def setUp(self):
+        self._tmp_home = tempfile.TemporaryDirectory()
+        self._orig_expanduser = os.path.expanduser
+        home = self._tmp_home.name
 
-    def test_skips_relative_path_when_cwd_unresolvable(self):
-        line = "999 python3 -m painel serve .painel-board.json --port 8770"
-        found = cli._parse_ps_serve_lines(line, cwd_resolver=lambda pid: None)
-        self.assertEqual(found, [])
+        def fake_expanduser(path):
+            return path.replace("~", home, 1) if path.startswith("~") else self._orig_expanduser(path)
 
-    def test_ignores_unrelated_processes(self):
-        ps_output = "\n".join([
-            "1 /sbin/launchd",
-            "42 python3 -m http.server 8000",
-            "77 python3 -m painel serve board.json --port 8765",
-        ])
-        found = cli._parse_ps_serve_lines(ps_output, cwd_resolver=lambda pid: "/tmp/proj")
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["pid"], 77)
+        os.path.expanduser = fake_expanduser
+        self.addCleanup(setattr, os.path, "expanduser", self._orig_expanduser)
+        self.addCleanup(self._tmp_home.cleanup)
 
-    def test_multiple_running_instances_all_found(self):
-        ps_output = "\n".join([
-            "10 python3 -m painel serve /a/.painel-board.json --port 8765",
-            "20 python3 -m painel serve /b/.painel-board.json --port 8766",
-            "30 python3 -m painel serve /c/.painel-board.json --port 8767",
-        ])
-        found = cli._parse_ps_serve_lines(ps_output)
-        self.assertEqual({f["port"] for f in found}, {8765, 8766, 8767})
-        self.assertEqual({f["pid"] for f in found}, {10, 20, 30})
+    def test_no_instances_returns_empty(self):
+        self.assertEqual(cli._discover_running_boards(), [])
 
-    def test_missing_port_flag_is_skipped(self):
-        line = "5 python3 -m painel serve /a/.painel-board.json"
-        found = cli._parse_ps_serve_lines(line)
-        self.assertEqual(found, [])
+    def test_finds_a_genuinely_alive_registered_instance(self):
+        # Use our own pid (definitely alive) and a port we bind ourselves
+        # (definitely occupied) so _discover_running_boards' liveness check
+        # (pid alive AND port not free) is exercised for real, not mocked.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+            board_path = "/Users/x/Meu Drive/proj/.painel-board.json"  # deliberately has a space
+            cli._write_registry(os.getpid(), port, board_path)
+            found = cli._discover_running_boards()
+            self.assertEqual(found, [{"pid": os.getpid(), "board": board_path, "port": port}])
 
-    def test_no_running_instances_returns_empty(self):
-        self.assertEqual(cli._parse_ps_serve_lines(""), [])
+    def test_stale_entry_self_heals_and_is_removed(self):
+        # A registry entry whose port is free again (process gone) must not
+        # be reported, and its file should be cleaned up automatically.
+        port = cli._find_free_port(start=39001)
+        cli._write_registry(os.getpid(), port, "/tmp/gone/.painel-board.json")
+        self.assertEqual(cli._discover_running_boards(), [])
+        self.assertFalse(os.path.exists(cli._registry_path(port)))
 
-    def test_dedupes_same_port_keeping_highest_pid(self):
-        # Only one process can really own a port -- two process-table entries
-        # for the same port (stale/orphaned duplicate, e.g. from a crashed
-        # restart) must collapse to one, or restart-all would race to rebind
-        # the port twice and silently orphan a process outside any pidfile.
-        ps_output = "\n".join([
-            "100 python3 -m painel serve /a/.painel-board.json --port 8791",
-            "999 python3 -m painel serve /a/.painel-board.json --port 8791",
-        ])
-        found = cli._parse_ps_serve_lines(ps_output)
-        self.assertEqual(len(found), 1)
-        self.assertEqual(found[0]["pid"], 999)
+    def test_dead_pid_with_occupied_port_is_not_reported(self):
+        # Extremely unlikely real pid, port genuinely occupied by us --
+        # must not be reported since the *pid* is the one that's dead.
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            s.listen(1)
+            port = s.getsockname()[1]
+            cli._write_registry(999999999, port, "/tmp/x/.painel-board.json")
+            self.assertEqual(cli._discover_running_boards(), [])
+
+    def test_remove_registry_is_idempotent(self):
+        cli._remove_registry(39999)  # never existed -- must not raise
+        port = cli._find_free_port(start=39002)
+        cli._write_registry(os.getpid(), port, "/tmp/x/.painel-board.json")
+        cli._remove_registry(port)
+        cli._remove_registry(port)  # second call, file already gone -- must not raise
+        self.assertFalse(os.path.exists(cli._registry_path(port)))
 
 
 if __name__ == "__main__":
