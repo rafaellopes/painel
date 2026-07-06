@@ -94,6 +94,18 @@ button.no {{ background:var(--blocked); color:#2a0a0a; margin-left:.5rem; }}
 .opts {{ display:flex; flex-wrap:wrap; gap:.2rem; }}
 .answer {{ color:var(--accent); font-size:.9rem; margin-top:.3rem; }}
 .answered {{ opacity:.72; }}
+/* A block currently waiting on the human (server-computed from the same
+   _needs_user() the attention bar uses) must be visually unmistakable among
+   plain info cards (markdown/note/log) -- not just linked-to from the bar
+   above. Lives entirely on the generic wrapper div so every block type,
+   present and future, gets it for free with zero per-block-module code. */
+.needs-user {{ position:relative; }}
+.needs-user > .card {{ border-left:4px solid var(--wip); }}
+.needs-user::before {{
+  content:"⏳ à tua espera"; position:absolute; top:-.65rem; right:.9rem;
+  background:var(--wip); color:#1a1a1a; font-size:.68rem; font-weight:700;
+  letter-spacing:.02em; padding:.15rem .55rem; border-radius:999px; z-index:1;
+}}
 .attention {{ position:sticky; top:0; z-index:10; background:var(--wip); color:#1a1a1a;
   padding:.55rem .9rem; border-radius:0 0 10px 10px; font-size:.88rem; font-weight:500;
   margin:-2rem -1.25rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.25); }}
@@ -218,8 +230,12 @@ async function maybeNotify(newPending) {{
     const n = new Notification(titleFor(newPending, agentStatus));
     n.onclick = () => {{
       window.focus();
-      const first = document.querySelector('.attention a[href^="#blk-"]');
-      if (first) location.hash = first.getAttribute('href');
+      // Attention links are absolute paths+fragments (e.g. "/Estratégia#blk-x"),
+      // not bare "#blk-x" fragments, since the friendly path-based page routing
+      // landed -- navigate via href, not location.hash (which would only work
+      // for same-page fragments).
+      const first = document.querySelector('.attention a');
+      if (first) location.href = first.getAttribute('href');
     }};
   }} catch (e) {{}}
 }}

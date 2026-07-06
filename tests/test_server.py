@@ -60,6 +60,47 @@ class UnknownBlockRenderTest(unittest.TestCase):
         self.assertIn("totally_unknown", html)
 
 
+class NeedsUserWrapperTest(unittest.TestCase):
+    """A block waiting on the human must be visually distinct from plain
+    info cards (markdown/note/log), generically -- via the wrapper div's
+    class, not per-block-module code (any block type gets this for free)."""
+
+    def _board(self):
+        return {"blocks": [
+            {"id": "m1", "type": "markdown", "text": "just info, never pending"},
+            {"id": "q1", "type": "question", "prompt": "Qual o email?", "answer": None},
+        ]}
+
+    def test_pending_block_gets_needs_user_class(self):
+        html = srv.render(self._board())
+        self.assertIn('<div id="blk-q1" class="needs-user">', html)
+
+    def test_non_pending_block_has_no_class(self):
+        html = srv.render(self._board())
+        self.assertIn('<div id="blk-m1">', html)
+        self.assertNotIn('<div id="blk-m1" class="needs-user">', html)
+
+    def test_answered_block_loses_the_class(self):
+        board = self._board()
+        board["blocks"][1]["answer"] = "ana@acme.com"
+        html = srv.render(board)
+        self.assertNotIn('id="blk-q1" class="needs-user"', html)
+
+    def test_needs_user_marker_present_for_every_pending_type(self):
+        # One of each interactive type still unresolved -- every single one
+        # must get the wrapper class, proving this is generic, not special-
+        # cased per block type.
+        board = {"blocks": [
+            {"id": "ck", "type": "checklist", "items": [{"id": "c1", "text": "x", "checked": False}]},
+            {"id": "ch", "type": "choice", "prompt": "?", "options": ["A"], "selected": None},
+            {"id": "ap", "type": "approval", "prompt": "?", "decision": None},
+            {"id": "fm", "type": "form", "prompt": "?", "fields": [{"id": "f", "label": "L"}], "submitted": False},
+        ]}
+        html = srv.render(board)
+        for bid in ("ck", "ch", "ap", "fm"):
+            self.assertIn(f'<div id="blk-{bid}" class="needs-user">', html)
+
+
 class EventDispatchTest(unittest.TestCase):
     def _handler_apply(self, board_path, data):
         srv._Handler.board_path = board_path

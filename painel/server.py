@@ -252,8 +252,17 @@ def render(board: dict, active_page=None) -> str:
     # want to show the M5 whose-turn chip themselves (chat.py, M7, §5.5) can
     # read it from ctx during their own render().
     current_agent_status = _agent_status(board)
+    # Which block ids are currently pending on the human (§6.2's own
+    # definition), computed once so the wrapper div can flag them -- this is
+    # what makes a pending block visually jump out among plain info cards
+    # (markdown/note/log) without any per-block-module change, present or
+    # future: the marker lives entirely in this generic wrapper + page.py's
+    # CSS, never in a block's own render().
+    pending = _needs_user(board)  # spans ALL pages (§11.2), reused below for the attention bar
+    pending_ids = {str(bid) for bid, _label in pending}
     blocks = "".join(
-        f'<div id="blk-{e(b.get("id", ""))}">'
+        f'<div id="blk-{e(b.get("id", ""))}"'
+        f'{" class=\"needs-user\"" if str(b.get("id")) in pending_ids else ""}>'
         f'{_block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})}'
         f'</div>'
         for i, b in enumerate(blocks_list)
@@ -265,8 +274,7 @@ def render(board: dict, active_page=None) -> str:
             f'Atualizado: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
         ])
     )
-    # Attention bar spans ALL pages (§11.2), not just the active one.
-    pending = _needs_user(board)
+    # Attention bar (uses `pending` computed above, which already spans all pages).
     pending_count = len(pending)
     if pending:
         block_page = {str(b.get("id")): b.get("page") for b in all_blocks}
