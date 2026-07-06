@@ -85,12 +85,30 @@ running it just re-opens the tab instead of starting a second server. Useful
 companions:
 
 ```bash
-painel status   # is it running? where?
-painel stop     # stop the server for this board
-painel demo     # see every block type in a showcase board
+painel status      # is it running? where?
+painel stop        # stop the server for this board
+painel demo        # see every block type in a showcase board
+painel restart-all # restart every running instance on this machine (after an upgrade)
 ```
 
 No need to remember ports or ask your agent to start it for you.
+
+### The hub — one fixed address for every board
+
+`painel open` also starts (if not already running) a tiny **hub** on a fixed,
+well-known port: **http://localhost:8765/**. It lists every board currently
+running on your machine — title, project, pending count, and whether the
+agent is working/waiting/offline — as a clickable card. Bookmark that one
+address instead of tracking N different port numbers; it never needs a
+browser tab opened for it automatically, so it just sits there ready when
+you want it. `painel hub --port 8765` starts it manually if you ever need to.
+
+Chrome and Firefox also resolve any `*.localhost` subdomain to your own
+machine with zero configuration (no `/etc/hosts` edit, no sudo), so if you
+want a vanity per-project bookmark you can use e.g.
+`http://myproject.localhost:8765/` — but note the **port**, not the hostname,
+is what actually selects the board; the subdomain is cosmetic only and
+pAInel doesn't inspect or route on it.
 
 Then point your agent at `board.json`. When someone interacts, the server prints
 a line like:

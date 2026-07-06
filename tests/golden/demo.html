@@ -128,6 +128,9 @@ footer { color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5
 .chat-chip { margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
   letter-spacing:normal; }
 .chat-msgs { max-height:340px; overflow-y:auto; margin-bottom:.5rem; }
+/* --- Hub (M9, docs/SPEC.md §13) -- cards are plain links to each board --- */
+a.hub-card { display:block; text-decoration:none; color:inherit; }
+a.hub-card:hover { border-color:var(--accent); }
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav { max-width:1040px; }
 .page-shell { display:flex; gap:2rem; align-items:flex-start; }

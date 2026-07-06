@@ -36,6 +36,12 @@ Don't use it for one-shot answers or quick chats.
    fall back to `python3 -m painel serve board.json --port <N> --open`
    (foreground) or vendor the single `painel/server.py` into the project.
 
+   `painel open` also silently ensures a **hub** is running at the fixed
+   address `http://localhost:8765/` — a page listing every board currently
+   running on the machine, with pending badges and status chips, click-through
+   to each. It's a convenience for the human to bookmark once; you don't need
+   to do anything extra to keep it running or mention it unless asked.
+
 3. **Watch** for interactions. `painel open` logs the server's stdout to
    `<board>.log` in the project — attach a background monitor to that file,
    filtering to JSON lines (they start with `{`). Each line is one interaction

@@ -100,7 +100,10 @@ class DiscoverRunningBoardsTest(unittest.TestCase):
             board_path = "/Users/x/Meu Drive/proj/.painel-board.json"  # deliberately has a space
             cli._write_registry(os.getpid(), port, board_path)
             found = cli._discover_running_boards()
-            self.assertEqual(found, [{"pid": os.getpid(), "board": board_path, "port": port}])
+            self.assertEqual(
+                found,
+                [{"pid": os.getpid(), "board": board_path, "port": port, "kind": "board"}],
+            )
 
     def test_stale_entry_self_heals_and_is_removed(self):
         # A registry entry whose port is free again (process gone) must not

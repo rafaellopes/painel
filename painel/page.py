@@ -3,8 +3,21 @@ Page shell: the _PAGE HTML template, global CSS, and global JS.
 
 Per-block JS (from each block module's JS constant) is joined in and
 inserted at the {block_js} placeholder by server.py.
+
+The {cr_global} placeholder holds the M8 global "Pedir alteração" affordance
+(docs/SPEC.md §12.3) -- a real board's render() fills it with CR_GLOBAL_HTML;
+the hub (M9, painel/hub.py) fills it with "" since it's host-app chrome, not
+a board, and change requests don't apply to it.
 """
 from __future__ import annotations
+
+CR_GLOBAL_HTML = """<div class="cr-global">
+  <button class="ico" title="Pedir alteração, nova tarefa, ou rever algo" onclick="crToggleGlobal()">&#10133; Pedir alteração, nova tarefa, ou rever algo</button>
+  <div id="cr-box-global" class="cr-box" style="display:none">
+    <textarea id="cr-ta-global" data-orig="" placeholder="O que precisas de pedir?"></textarea>
+    <button onclick="crSendGlobal()">Enviar pedido</button>
+  </div>
+</div>"""
 
 _PAGE = """<!doctype html>
 <html lang="pt"><head>
@@ -136,6 +149,9 @@ footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.
 .chat-chip {{ margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
   letter-spacing:normal; }}
 .chat-msgs {{ max-height:340px; overflow-y:auto; margin-bottom:.5rem; }}
+/* --- Hub (M9, docs/SPEC.md §13) -- cards are plain links to each board --- */
+a.hub-card {{ display:block; text-decoration:none; color:inherit; }}
+a.hub-card:hover {{ border-color:var(--accent); }}
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav {{ max-width:1040px; }}
 .page-shell {{ display:flex; gap:2rem; align-items:flex-start; }}
@@ -162,13 +178,7 @@ body.has-nav {{ max-width:1040px; }}
   <div id="status-chip" class="status-chip">{status_chip}</div>
 </header>
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
-<div class="cr-global">
-  <button class="ico" title="Pedir alteração, nova tarefa, ou rever algo" onclick="crToggleGlobal()">&#10133; Pedir alteração, nova tarefa, ou rever algo</button>
-  <div id="cr-box-global" class="cr-box" style="display:none">
-    <textarea id="cr-ta-global" data-orig="" placeholder="O que precisas de pedir?"></textarea>
-    <button onclick="crSendGlobal()">Enviar pedido</button>
-  </div>
-</div>
+{cr_global}
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
 async function send(payload) {{

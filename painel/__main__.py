@@ -19,9 +19,10 @@ import sys
 import time
 import webbrowser
 
-from .server import serve, save_board, load_board
+from .server import serve, serve_hub, save_board, load_board
 
 DEFAULT_BOARD = ".painel-board.json"
+HUB_PORT = 8765
 
 STARTER = {
     "title": "pAInel",
@@ -160,8 +161,51 @@ def _spawn(board: str, port: int) -> int:
     )
     with open(_pidfile(board), "w", encoding="utf-8") as fh:
         json.dump({"pid": proc.pid, "port": port}, fh)
-    _write_registry(proc.pid, port, board)
+    _write_registry(proc.pid, port, board, kind="board")
     return proc.pid
+
+
+def _hub_logfile(port: int) -> str:
+    return os.path.join(_registry_dir(), f"hub-{port}.log")
+
+
+def _hub_pidfile(port: int) -> str:
+    return os.path.join(_registry_dir(), f"hub-{port}.pid")
+
+
+def _spawn_hub(port: int) -> int:
+    """Launch a detached `painel hub` on `port` (§13.2). A hub is itself a
+    `painel serve`-style process -- but of a synthetic/generated board, not
+    a file on disk -- so it gets its own code path (`python -m painel hub`,
+    not `... serve <board>`) and its own log/pidfile under the registry dir
+    (there's no project board path to hang a `<board>.log`/`<board>.pid` off
+    of). Registered with kind='hub' so restart-all's discovery can tell it
+    apart from a normal board instance and respawn it correctly (see
+    _discover_running_boards/cmd_restart_all)."""
+    log_fh = open(_hub_logfile(port), "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "painel", "hub", "--port", str(port)],
+        stdout=log_fh, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    with open(_hub_pidfile(port), "w", encoding="utf-8") as fh:
+        json.dump({"pid": proc.pid, "port": port}, fh)
+    _write_registry(proc.pid, port, board=None, kind="hub")
+    return proc.pid
+
+
+def _ensure_hub_running(port: int = HUB_PORT) -> None:
+    """Idempotent, same _spawn-family pattern as cmd_open's own board check
+    (§13.2): if a hub is already alive on `port`, do nothing; otherwise start
+    one. Never opens a browser tab -- the hub is the thing you bookmark once,
+    not something that appears unprompted."""
+    for inst in _discover_running_boards():
+        if inst.get("kind") == "hub" and inst["port"] == port:
+            return
+    if not _port_free(port):
+        return  # something else is already listening there -- don't fight it
+    _spawn_hub(port)
+    _wait_until_listening(port)
 
 
 def _wait_until_listening(port: int, tries: int = 50) -> None:
@@ -176,6 +220,8 @@ def cmd_open(board: str, port: int | None) -> int:
         save_board(board, STARTER)
         print(f"board criado: {board}")
     _default_agent_status_if_absent(board)
+
+    _ensure_hub_running()  # §13.2 -- idempotent, no browser tab for the hub itself
 
     info = _read_pidfile(board)
     if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
@@ -240,9 +286,16 @@ def _registry_path(port: int) -> str:
     return os.path.join(_registry_dir(), f"{port}.json")
 
 
-def _write_registry(pid: int, port: int, board: str) -> None:
+def _write_registry(pid: int, port: int, board: str | None, kind: str = "board") -> None:
+    """`kind` distinguishes a normal board instance ('board', the default --
+    and the implicit value of every pre-M9 registry entry, which has no
+    `kind` key at all) from the hub itself ('hub', §13.2), so restart-all
+    knows whether to respawn with `painel serve <board>` or `painel hub`.
+    `board` is None for a hub entry (there is no board.json backing it)."""
+    entry = {"pid": pid, "port": port, "kind": kind}
+    entry["board"] = os.path.abspath(board) if board is not None else None
     with open(_registry_path(port), "w", encoding="utf-8") as fh:
-        json.dump({"pid": pid, "port": port, "board": os.path.abspath(board)}, fh)
+        json.dump(entry, fh)
 
 
 def _remove_registry(port: int) -> None:
@@ -252,13 +305,20 @@ def _remove_registry(port: int) -> None:
         pass
 
 
-def _discover_running_boards() -> list[dict]:
-    """Every instance _spawn() has ever started that is still actually alive
-    right now (pid alive AND its port no longer free) -- reads the central
-    registry (see _registry_dir), not the process table. A registry entry
-    whose process has since died is stale and removed on sight (self-healing:
-    no manual cleanup needed as instances come and go). Returns
-    [{"pid", "board", "port"}]."""
+def _discover_running_boards(kind: str | None = None) -> list[dict]:
+    """Every instance _spawn()/_spawn_hub() has ever started that is still
+    actually alive right now (pid alive AND its port no longer free) --
+    reads the central registry (see _registry_dir), not the process table. A
+    registry entry whose process has since died is stale and removed on
+    sight (self-healing: no manual cleanup needed as instances come and go).
+
+    `kind` defaults to 'board' on any entry that predates M9 and therefore
+    has no `kind` key at all -- this is the backward-compat rule (§13's
+    registry format extension): old entries only ever described boards, so
+    absence of the key means exactly that. Pass kind="board"/"hub" to filter
+    (the hub's own listing, painel/hub.py, only ever wants boards).
+
+    Returns [{"pid", "board", "port", "kind"}] ("board" is None for hubs)."""
     found = []
     d = _registry_dir()
     try:
@@ -273,11 +333,14 @@ def _discover_running_boards() -> list[dict]:
             with open(path, "r", encoding="utf-8") as fh:
                 entry = json.load(fh)
             pid, port, board = entry["pid"], entry["port"], entry["board"]
+            entry_kind = entry.get("kind") or "board"
         except (OSError, json.JSONDecodeError, KeyError, TypeError):
             _try_remove(path)
             continue
         if _pid_alive(pid) and not _port_free(port):
-            found.append({"pid": pid, "board": board, "port": port})
+            if kind is not None and entry_kind != kind:
+                continue
+            found.append({"pid": pid, "board": board, "port": port, "kind": entry_kind})
         else:
             _try_remove(path)  # stale -- that instance is gone
     return found
@@ -292,14 +355,20 @@ def _try_remove(path: str) -> None:
 
 def cmd_restart_all() -> int:
     """Restart every running pAInel instance on this machine on the SAME
-    board+port, so a freshly-shipped painel version is picked up everywhere
-    at once without hunting down each project's process by hand."""
+    port (and, for boards, the same board file), so a freshly-shipped painel
+    version is picked up everywhere at once without hunting down each
+    project's process by hand. Respawns each instance with the code path
+    matching its registry `kind` (§13.2/M9): a hub entry gets `painel hub
+    --port <port>` back, a board entry gets `painel serve <board> --port
+    <port>` back -- old-format entries with no `kind` key default to
+    'board' (see _discover_running_boards), so this is fully backward
+    compatible with a registry written before M9 shipped."""
     instances = _discover_running_boards()
     if not instances:
         print("nenhum pAInel a correr.")
         return 0
     for inst in instances:
-        pid, board, port = inst["pid"], inst["board"], inst["port"]
+        pid, board, port, kind = inst["pid"], inst["board"], inst["port"], inst["kind"]
         if _pid_alive(pid):
             try:
                 os.kill(pid, 15)
@@ -310,9 +379,14 @@ def cmd_restart_all() -> int:
                 break
             time.sleep(0.1)
         _wait_until_listening_free(port)
-        new_pid = _spawn(board, port)
-        _wait_until_listening(port)
-        print(f"reiniciado: {board}  http://localhost:{port}/  (pid {new_pid})")
+        if kind == "hub":
+            new_pid = _spawn_hub(port)
+            _wait_until_listening(port)
+            print(f"reiniciado: hub  http://localhost:{port}/  (pid {new_pid})")
+        else:
+            new_pid = _spawn(board, port)
+            _wait_until_listening(port)
+            print(f"reiniciado: {board}  http://localhost:{port}/  (pid {new_pid})")
     return 0
 
 
@@ -344,6 +418,9 @@ def main(argv=None) -> int:
     ps.add_argument("--port", type=int, default=8765)
     ps.add_argument("--open", action="store_true", help="open the browser")
 
+    ph = sub.add_parser("hub", help="serve the hub (docs/SPEC.md §13): a fixed-port page listing every live board (blocking, foreground)")
+    ph.add_argument("--port", type=int, default=HUB_PORT)
+
     pi = sub.add_parser("init", help="write a starter board.json")
     pi.add_argument("board")
 
@@ -363,6 +440,9 @@ def main(argv=None) -> int:
     if args.cmd == "serve":
         _default_agent_status_if_absent(args.board)
         serve(args.board, port=args.port, open_browser=args.open)
+        return 0
+    if args.cmd == "hub":
+        serve_hub(port=args.port)
         return 0
     if args.cmd == "init":
         if os.path.exists(args.board):
