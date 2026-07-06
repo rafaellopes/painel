@@ -361,13 +361,42 @@ True if: focused element is TEXTAREA/INPUT/SELECT, **or** any
 textarea/input's `value !== data-orig`. Every new block with inputs must set
 `data-orig` on render.
 
+### 6.5 The generic "needs-user" wrapper (shipped ad hoc after M7, retrofit here)
+
+Every block's outer `<div id="blk-<id>">` wrapper (§6.2) additionally gets
+`class="needs-user"` when that block's id appears in `_needs_user(board)`'s
+pending set. This is computed once in `render()` (a `pending_ids` set built
+*before* the blocks are joined) and is the reason a pending block visually
+stands out (colored left border + a small "⏳ à tua espera" ribbon, in
+page.py's CSS) from plain info cards (markdown/note/log) — not just linked
+to from the attention bar. **Zero per-block-module code**: any block type,
+present or future, gets this for free purely from the wrapper + CSS. §12's
+`change_request` UI (M8) reuses this exact same generic-wrapper pattern for
+its own per-block ✎ button — read this section before building M8.
+
+### 6.6 The instance registry (shipped ad hoc for `restart-all`, retrofit here)
+
+`~/.painel/instances/<port>.json` — one small file per *currently running*
+instance, written by the CLI's `_spawn()` on every launch and removed by
+`cmd_stop`: `{"pid": int, "port": int, "board": "<absolute path>"}`. This
+exists so `painel restart-all` can find every live instance on the machine
+without parsing `ps` output (an earlier attempt at that broke on any board
+path containing a space, e.g. Google Drive's "Meu Drive" — printed command
+lines can't reliably distinguish "a space inside one argument" from "a
+space between two arguments" once the kernel's original argv is gone).
+Stale entries (pid dead, or port free again) are deleted the next time
+anything reads the directory — self-healing, no manual cleanup. **§13's
+hub (M9) is this registry with a UI on top** — read this section before
+building M9.
+
 ---
 
 ## 7. CLI (unchanged surface, document only)
 
 `painel open [board] [--port N]` idempotent (pidfile `<board>.pid`,
-log `<board>.log`) · `stop` · `status` · `serve` (foreground) · `init` ·
-`demo`. Default board `.painel-board.json`. Auto port from 8765.
+log `<board>.log`) · `stop` · `status` · `restart-all` (§6.6) · `serve`
+(foreground) · `init` · `demo`. Default board `.painel-board.json`. Auto
+port from 8765.
 
 ---
 
@@ -508,6 +537,198 @@ future need appears, extend additively; do not redesign the `page` field.
 
 ---
 
+## 12. Change requests (M8) — full spec
+
+**Problem this solves:** the board today only lets the human answer what
+the agent already asked (questions, choices, approvals). There is no way
+to *initiate* something — "the SLA is now 12h, not 24h", "add a testing
+phase", "push this deadline back a week" — without leaving the board and
+typing it into the chat, which is exactly the "which surface do I use"
+confusion this project exists to remove (see the session's whole M5/M6/M7
+arc). The fix generalizes the pattern already proven twice: `plan`'s
+per-item 💬 threads (§5.1) and the ✎ inline-edit box already on `plan`
+items — lift both into a **generic, per-block mechanism** every block type
+gets for free, plus one global entry point for requests that don't belong
+to any specific block.
+
+### 12.1 Protocol addition — one universal event, no new block-level fields
+
+```jsonc
+{"event": "change_request", "block": "<id or null>", "value": "<free text>"}
+```
+
+- `block` is the id of the card the ✎ was clicked on, or `null`/absent for
+  the global "➕ Pedir alteração" affordance (§12.3).
+- This event is **not silent** (must reach the agent) — the entire point.
+- No new fields are added to any block's own schema. The request is not
+  stored *on* the block; it's appended to a board-level list so it survives
+  even if the block it referenced is later removed/changed:
+  ```jsonc
+  { "change_requests": [
+      {"id": "cr1", "block": "regras", "text": "o prazo passa a 12h",
+       "status": "open", "ts": "..."}
+  ] }
+  ```
+  (`ts` is a free-format string the *server* does not generate — see §12.4
+  on why timestamps are the agent's job, not pAInel's.)
+- `status`: `"open"` (default) until the agent resolves it, then
+  `"done"` or `"declined"` (agent sets this by editing the board, same as
+  any other state change — no new event needed for the resolution side).
+
+### 12.2 The generic ✎ button (reuses §6.5's wrapper pattern exactly)
+
+Every block wrapper (`<div id="blk-<id>" class="needs-user">...`, §6.5)
+gets one more small icon button injected by `render()` itself — **not by
+any block module** — same reasoning as the needs-user ribbon: this must
+work for every block type without touching `blocks/*.py`. On click, reveals
+an inline textarea + "Enviar pedido" button (same show/hide + `data-orig`
+conventions as `plan`'s ✎ edit box, §5.1), posts `change_request` with that
+block's id, clears/collapses on success.
+
+Open questions the previous two features already answered, reused here:
+- Persisting "this box is open" across polls/reloads → same `sessionStorage`
+  pattern as plan-thread open state (§1's "Open plan-threads persist").
+- Where the button sits among the others → same `.plan-actions`-style icon
+  row concept, generalized to a shared `.block-actions` row that `render()`
+  injects into the wrapper (not into each block's own card markup, so it
+  doesn't fight with a block's own internal layout).
+
+### 12.3 The global entry point
+
+A small persistent affordance at the bottom of the page (footer area, above
+the `<footer>` brand line): "➕ Pedir alteração, nova tarefa, ou rever algo"
+— same inline textarea+button pattern, posts `change_request` with
+`block: null`. Exists precisely for requests that don't belong to one card
+("adiciona uma fase de testes com utilizadores" isn't about any single
+existing block).
+
+### 12.4 Rendering open change requests
+
+A `change_requests` array with any `status: "open"` entries renders as its
+own small card (reuse `log`-style rows, §5.1's `log` block, but this is
+server/page-level rendering, not a `blocks/*.py` module — it's board-level
+state, not a block) titled "Pedidos em aberto", each row showing the text
+and (if `block` is set) a link to that block. This card's presence also
+feeds `_needs_user()` — **from the agent's perspective**, not the human's:
+an open change request is something *the agent* owes a resolution to, so
+per the same reasoning M7 (§5.5) used for unanswered chat messages,
+**open change requests do NOT appear in the human-facing attention bar**
+(§6.2's bar is only for what's waiting on the human). They're visible on
+the board as a standing record, and the agent is expected to notice them
+via the same event-stream mechanism as everything else (stdout/`<board>.log`).
+
+### 12.5 Skill guidance (update `.claude/skills/painel/SKILL.md`)
+
+Add explicit instructions: on receiving `change_request`, the agent must
+(a) actually apply the requested change to the board if it's clear enough
+to act on immediately, or (b) ask one clarifying question (as a normal
+`question`/`choice` block, not chat) if not, and (c) mark the corresponding
+`change_requests` entry `"done"`/`"declined"` with a one-line reason once
+resolved, and (d) log the outcome in the board's `log` block. Never resolve
+a change request by only replying in chat — the resolution belongs on the
+board, exactly like every other interaction this project stands for.
+
+---
+
+## 13. The hub (M9) — full spec
+
+**Problem this solves:** every board lives on its own ad-hoc port; there is
+no single, memorable address. The human either remembers N different
+`localhost:PORT` numbers or asks the agent each time. §6.6's instance
+registry already tracks every live board — the hub is a thin UI on top of
+data that already exists, not new tracking infrastructure.
+
+### 13.1 What it is
+
+A tiny built-in page, served on a **fixed, well-known port** (8765 — already
+the CLI's default starting port, so no new number to remember), listing
+every board currently in `~/.painel/instances/` (§6.6) as a clickable card:
+board title, project (from `meta.project`), a pending-count badge (reusing
+`_needs_user()` the same way page-nav badges do, §11.2), and the
+`agent_status` chip (§10.2). Clicking a card navigates to that board's own
+`http://localhost:<its-port>/`.
+
+### 13.2 How it's served — reuse `serve()`, don't fork a second server
+
+Do **not** write a second HTTP server implementation. Instead:
+- `painel hub [--port 8765]` is a new CLI command that starts a `serve()`
+  instance whose "board" is synthesized on every request directly from
+  `_discover_running_boards()` (§6.6) — each live instance becomes one
+  `heading`+`markdown`+`links`-style entry (or a small new internal render
+  path if that doesn't fit cleanly; **do not add a new block type to the
+  public catalog for this** — the hub's listing is host-app chrome, not a
+  board a human composes, so it can live entirely in `painel/__main__.py`
+  or a small `painel/hub.py`, calling `page.py`'s existing template/CSS
+  directly rather than going through the block registry).
+- The hub re-reads the registry on every request (like `_needs_user` is
+  recomputed on every render) — no caching, no staleness, boards
+  starting/stopping are reflected immediately on refresh.
+- `painel open` should, in addition to opening the specific board, ensure
+  the hub is running too (idempotent, same `_spawn`-family pattern as any
+  other instance) so the human always has the fixed address available —
+  but the hub itself never needs a browser tab opened automatically; it's
+  the thing you bookmark once, not something that appears unprompted.
+
+### 13.3 Friendly host, one extra step
+
+`http://localhost:8765/` is the guaranteed-works address (works in every
+browser, zero config) and is the one to print/document as canonical. As a
+bonus, **document** (README/SKILL.md, not new code) that Chrome/Firefox
+users can bookmark `http://<slug>.localhost:8765/`-style addresses if they
+want per-project vanity URLs — browsers resolve arbitrary `*.localhost`
+subdomains to loopback with zero configuration (living standard, no
+`/etc/hosts` edit, no sudo). This is documentation only; do not attempt to
+make pAInel bind to or recognize custom hostnames — the port is what
+actually routes the request, the hostname is cosmetic.
+
+### 13.4 Non-goals for M9
+
+No auth, no remote access (still 127.0.0.1-only, same as every other
+instance) — the hub is a local convenience, not pAInel Cloud (see
+`docs/CLOUD.md`) wearing a costume. No renaming/managing boards from the
+hub UI — it's read-only navigation, not a board manager.
+
+---
+
+## 14. Tab hygiene and the chat-pointer convention (M10) — full spec
+
+Two small, independent fixes for the same underlying complaint: repeated
+`painel open` calls accumulate duplicate browser tabs, and the agent's own
+chat output tends to duplicate everything already on the board instead of
+just pointing at it.
+
+### 14.1 Duplicate-tab self-close via BroadcastChannel
+
+Every board page, on load, opens a `BroadcastChannel` named
+`painel-<port>` (stable per instance, not per board path, since the port
+*is* the instance identity — §6.6). It announces its presence; if another
+tab for the same channel responds "I'm already here", the newer tab closes
+itself after briefly flashing a "👉 já tens este pAInel aberto — a fechar
+este separador" notice (long enough to read, short enough to not be
+annoying — ~1.5s), and the original tab gets a transient visual pulse (CSS
+animation reusing the same `pulse` keyframes already defined for the
+plan-thread reply dot, §5.1) so the human's eye is drawn to the tab that's
+staying open. `window.close()` only works on tabs opened by script (which
+is exactly the `webbrowser.open()` case from `painel open` — the common
+case this fixes); if the browser refuses to close a manually-opened tab,
+fall back to just showing the "already open elsewhere" notice without
+attempting to close, rather than erroring.
+
+### 14.2 The chat-pointer convention (documentation only, no new code)
+
+Update `.claude/skills/painel/SKILL.md` with an explicit rule: once
+something is represented on the board, the agent's own chat reply about it
+should be **one line plus the deep link** (§10.4's convention), not a
+restated copy of the board's content. The board is the single source of
+truth for state; the chat is for conversation and for work that doesn't
+have a board representation yet. This directly targets the failure mode
+observed in this project's own dogfooding (the `rececao.pt` session
+described three pending decisions in full prose in chat *and* had them as
+proper `choice`/`question` blocks — the duplication is what made the board
+feel optional).
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -519,11 +740,18 @@ future need appears, extend additively; do not redesign the `page` field.
 | **M5** | Whose-turn signal (§10): dynamic `<title>`, favicon, header chip, browser notification, `meta.agent_status` protocol field | Title/favicon change correctly across all 4 states in a manual + scripted check; notification fires only on 0→N transition while hidden; existing boards without `agent_status` still render (defaults to `working`) |
 | **M6** | Multi-page navigation (§11): `page` field, sidebar/dropdown nav with pending badges, attention bar spans pages | Board with no `page` fields renders identically to pre-M6 (no nav at all) — pinned by test; board with 2+ pages shows nav, badges match `_needs_user()` counts, anchor links cross pages correctly |
 | **M7** | `chat` block (§5.5) | Passes §5.4 DoD; requires M5 merged first (status chip dependency); demo board includes a chat example |
+| **M8** | Change requests (§12): universal `change_request` event, generic ✎ per-block button + global "➕ Pedir alteração" affordance, `change_requests` board-level array, skill guidance | ✎ button appears on every block type without touching any `blocks/*.py` module; global affordance works with `block: null`; open requests render as their own card and do NOT appear in the human-facing attention bar (§12.4); skill updated |
+| **M9** | The hub (§13): `painel hub` on a fixed port (default 8765) listing every live instance from the §6.6 registry with pending badges + status chip, click-through to that board | Hub reflects registry changes on every refresh, no caching; a board with zero registry entries shows an empty-but-not-broken hub; no new public block type added for this |
+| **M10** | Tab hygiene + chat-pointer convention (§14): BroadcastChannel duplicate-tab self-close, skill rule that chat replies point at the board instead of restating it | Opening the same board twice in two tabs results in one tab closing itself with a visible notice, the other pulsing; skill doc updated with the one-line-plus-link convention |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
 other** (independent), but **M7 depends on M5** landing first. M2/M3/M4 are
-independent of M5/M6/M7 and may interleave freely.
+independent of M5/M6/M7 and may interleave freely. **M8 is independent of
+M5-M7** (build any time after M1). **M9 depends on §6.6's registry**
+(already shipped, ad hoc, ahead of this table — safe to build any time).
+**M10.1 (tab dedup) is independent; M10.2 (chat-pointer convention) is
+docs-only and can land any time.**
 
 Work one PR per milestone (M2 may be one PR per block). Conventional commit
 messages. Ask nothing that this spec already answers; where the spec is
