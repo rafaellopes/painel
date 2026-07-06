@@ -142,6 +142,30 @@ def _default_agent_status_if_absent(board: str) -> None:
         save_board(board, b)
 
 
+def _spawn(board: str, port: int) -> int:
+    """Launch a detached `painel serve` for `board` on `port`, log to
+    `<board>.log` (appended, so restart-all keeps history), pidfile written.
+    Returns the child pid. Shared by cmd_open and restart-all so both spawn
+    identically."""
+    log_path = board + ".log"
+    log_fh = open(log_path, "a", encoding="utf-8")
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "painel", "serve", board, "--port", str(port)],
+        stdout=log_fh, stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    with open(_pidfile(board), "w", encoding="utf-8") as fh:
+        json.dump({"pid": proc.pid, "port": port}, fh)
+    return proc.pid
+
+
+def _wait_until_listening(port: int, tries: int = 50) -> None:
+    for _ in range(tries):
+        if not _port_free(port):
+            return
+        time.sleep(0.1)
+
+
 def cmd_open(board: str, port: int | None) -> int:
     if not os.path.exists(board):
         save_board(board, STARTER)
@@ -156,21 +180,9 @@ def cmd_open(board: str, port: int | None) -> int:
         return 0
 
     chosen_port = port or _find_free_port()
-    log_path = board + ".log"
-    log_fh = open(log_path, "a", encoding="utf-8")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "painel", "serve", board, "--port", str(chosen_port)],
-        stdout=log_fh, stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-    with open(_pidfile(board), "w", encoding="utf-8") as fh:
-        json.dump({"pid": proc.pid, "port": chosen_port}, fh)
-
+    _spawn(board, chosen_port)
+    _wait_until_listening(chosen_port)
     url = f"http://localhost:{chosen_port}/"
-    for _ in range(50):
-        if not _port_free(chosen_port):
-            break
-        time.sleep(0.1)
     webbrowser.open(url)
     print(f"pAInel aberto: {url}  (para parar: python3 -m painel stop {board})")
     return 0
@@ -201,6 +213,134 @@ def cmd_status(board: str) -> int:
     return 0
 
 
+def _proc_cwd(pid: int) -> str | None:
+    """Best-effort cwd of a running process (POSIX only -- macOS via lsof,
+    Linux via /proc). Used only by restart-all's discovery; failures just
+    mean that instance is skipped, never a crash."""
+    proc_path = f"/proc/{pid}/cwd"
+    if os.path.exists(proc_path):
+        try:
+            return os.readlink(proc_path)
+        except OSError:
+            return None
+    try:
+        out = subprocess.run(
+            ["lsof", "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout
+        for line in out.splitlines():
+            if line.startswith("n"):
+                return line[1:]
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def _parse_ps_serve_lines(ps_output: str, cwd_resolver=None) -> list[dict]:
+    """Pure parsing of `ps -eo pid=,command=` output into
+    [{"pid", "board", "port"}] for every live `... -m painel serve <board>
+    --port <N>` process. `cwd_resolver(pid) -> str|None` is injectable for
+    tests; defaults to `_proc_cwd`. A line that can't be fully parsed (odd
+    quoting, missing --port, unresolvable relative board path) is skipped,
+    never guessed at or raised."""
+    if cwd_resolver is None:
+        cwd_resolver = _proc_cwd
+    found = []
+    for line in ps_output.splitlines():
+        line = line.strip()
+        if " -m painel serve " not in line and "painel serve " not in line:
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        args = parts[1].split()
+        if "serve" not in args:
+            continue
+        i = args.index("serve")
+        board_arg = args[i + 1] if i + 1 < len(args) else None
+        port = None
+        if "--port" in args:
+            j = args.index("--port")
+            if j + 1 < len(args):
+                try:
+                    port = int(args[j + 1])
+                except ValueError:
+                    port = None
+        if not board_arg or port is None:
+            continue
+        board_path = board_arg
+        if not os.path.isabs(board_path):
+            cwd = cwd_resolver(pid)
+            if cwd is None:
+                continue  # can't resolve a relative path without the cwd -- skip, don't guess
+            board_path = os.path.join(cwd, board_arg)
+        found.append({"pid": pid, "board": board_path, "port": port})
+    # Only one process can really be bound to a given port; if the process
+    # table momentarily shows two (a crashed-and-relaunched instance whose
+    # old entry hasn't been reaped yet, or leftover test debris), restarting
+    # each independently races to rebind the same port and can orphan one of
+    # them outside any pidfile. Keep a single entry per port -- the highest
+    # pid, i.e. the most recently started one, is the most likely survivor.
+    by_port = {}
+    for f in found:
+        prev = by_port.get(f["port"])
+        if prev is None or f["pid"] > prev["pid"]:
+            by_port[f["port"]] = f
+    return list(by_port.values())
+
+
+def _discover_running_boards() -> list[dict]:
+    """Find every live `python -m painel serve <board> --port <N>` process on
+    this machine, regardless of which project/terminal/agent started it, by
+    scanning the process table -- there is no central registry of running
+    boards (each lives in its own project dir's <board>.pid). Returns
+    [{"pid", "board", "port"}] with `board` resolved to an absolute path."""
+    try:
+        out = subprocess.run(
+            ["ps", "-eo", "pid=,command="], capture_output=True, text=True, timeout=5,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return _parse_ps_serve_lines(out)
+
+
+def cmd_restart_all() -> int:
+    """Restart every running pAInel instance on this machine on the SAME
+    board+port, so a freshly-shipped painel version is picked up everywhere
+    at once without hunting down each project's process by hand."""
+    instances = _discover_running_boards()
+    if not instances:
+        print("nenhum pAInel a correr.")
+        return 0
+    for inst in instances:
+        pid, board, port = inst["pid"], inst["board"], inst["port"]
+        if _pid_alive(pid):
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+        for _ in range(50):
+            if not _pid_alive(pid):
+                break
+            time.sleep(0.1)
+        _wait_until_listening_free(port)
+        new_pid = _spawn(board, port)
+        _wait_until_listening(port)
+        print(f"reiniciado: {board}  http://localhost:{port}/  (pid {new_pid})")
+    return 0
+
+
+def _wait_until_listening_free(port: int, tries: int = 50) -> None:
+    for _ in range(tries):
+        if _port_free(port):
+            return
+        time.sleep(0.1)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="painel", description="pAInel — second interface for CLI agents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -214,6 +354,8 @@ def main(argv=None) -> int:
 
     pstat = sub.add_parser("status", help="check if a board's server is running")
     pstat.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+
+    sub.add_parser("restart-all", help="restart every running pAInel instance on this machine (same board+port) -- run after upgrading painel")
 
     ps = sub.add_parser("serve", help="serve a board.json (blocking, foreground)")
     ps.add_argument("board")
@@ -234,6 +376,8 @@ def main(argv=None) -> int:
         return cmd_stop(args.board)
     if args.cmd == "status":
         return cmd_status(args.board)
+    if args.cmd == "restart-all":
+        return cmd_restart_all()
     if args.cmd == "serve":
         _default_agent_status_if_absent(args.board)
         serve(args.board, port=args.port, open_browser=args.open)
