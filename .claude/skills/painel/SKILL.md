@@ -186,7 +186,7 @@ Block types:
 - `note` — `{ "type":"note", "tone":"info|ok|warn|danger", "text":"..." }`
 - `tasks` — your progress, read-only. `{ "type":"tasks", "title":"...", "items":[{"text":"...","status":"done|wip|pending|blocked"}] }`
 - `plan` — a plan the user can steer, not just watch. Each item needs a stable `id`. `{ "type":"plan", "title":"...", "items":[{"id":"p1","text":"...","status":"pending|wip|done|blocked|skipped"}] }`. Per item the user can: ▶ **play** (jump the queue — tells you to work on it now), ✎ **edit** the text, ⏭ **skip**, ▲▼ **reorder**. Prefer `plan` over `tasks` whenever the user might want to reprioritize or rewrite a step; use plain `tasks` only for steps that are purely internal bookkeeping.
-- `checklist` — the user's manual steps. `{ "type":"checklist", "title":"...", "items":[{"id":"c1","text":"...","checked":false}] }`
+- `checklist` — the user's manual steps that resolve to a plain yes/no, nothing else. `{ "type":"checklist", "title":"...", "items":[{"id":"c1","text":"...","checked":false}] }`. If ticking the box would hide information you actually need back (an account, a chosen value, a URL, an amount), it's the wrong block — see "Checklist vs question/form" below.
 - `question` — `{ "type":"question", "prompt":"...", "answer":null }`
 - `choice` — `{ "type":"choice", "prompt":"...", "options":["A","B"], "selected":null }`
 - `approval` — `{ "type":"approval", "prompt":"...", "decision":null }`
@@ -223,10 +223,36 @@ once a single board is doing double or triple duty. Don't reach for it on
 small boards — it adds visual structure only once there's enough content to
 justify it.
 
+## Checklist vs question/form — don't hide data behind a checkbox
+
+A `checklist` item collapses to a bare `checked: true/false`. That's correct
+only when a tick is the *entire* answer — "log into the portal", "download
+the file". It's the wrong block the moment the step implies information you
+still need back from the human, and the tick would silently swallow it:
+
+```
+❌ checklist: "Ter pelo menos 2 contas de condutor de teste, associadas à mesma frota/gestor"
+```
+Marking that done tells you nothing — you still don't have the two accounts.
+The right shape asks for them directly:
+```
+✅ form: prompt "Contas de condutor de teste (mesma frota/gestor)",
+   fields: [{"id":"c1","label":"Conta 1 (email)","kind":"email","value":""},
+            {"id":"c2","label":"Conta 2 (email)","kind":"email","value":""}]
+```
+Same pattern for "Confirmar com o sócio: X ou Y?" (that's a `choice` or
+`question`, not a checkbox) and "Definir os fusos-alvo para o teste" (a
+`form` field, or a `question` if free text is fine). Before writing a
+checklist item, ask: *if this gets ticked, do I have everything I need, or
+am I still missing a value?* If you're missing a value, it's a
+`question`/`choice`/`form` item — reserve `checklist` for steps whose only
+output is "did you do it".
+
 ## Rules of thumb
 
 - Every interactive block needs a stable, unique `id` — you match events by it.
-- Prefer a `checklist` over asking the user to type "done" in chat.
+- Prefer a `checklist` over asking the user to type "done" in chat — but only
+  when there's truly nothing to capture beyond done/not-done (see above).
 - Prefer `choice`/`approval` over open questions when the options are known.
 - After every meaningful step, update the board — stale boards defeat the point.
 - Leave the board in its final state at the end; it's the session's record.
