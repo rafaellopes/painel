@@ -436,6 +436,63 @@ def _wait_until_listening_free(port: int, tries: int = 50) -> None:
         time.sleep(0.1)
 
 
+def _skill_source_dir() -> str | None:
+    """Resolve the canonical .claude/skills/painel directory next to this
+    checkout, if there is one. Works when painel is `pip install -e`'d
+    straight from its own git repo (which is the only real install path
+    right now, pre-M4/PyPI) -- an editable install's __file__ still points
+    into the source tree, so the repo root is just two levels up from this
+    package. Returns None for any install where that directory doesn't
+    exist (e.g. a hypothetical future wheel install with no .claude/
+    alongside it) rather than guessing or fabricating a path."""
+    pkg_dir = os.path.dirname(os.path.abspath(__file__))
+    repo_root = os.path.dirname(pkg_dir)
+    candidate = os.path.join(repo_root, ".claude", "skills", "painel")
+    return candidate if os.path.isdir(candidate) else None
+
+
+def cmd_install_skill(project_dir: str) -> int:
+    """Install the pAInel Claude Code skill into `project_dir` as a SYMLINK
+    to the canonical copy, never a file copy. A copy can drift out of sync
+    the moment the canonical skill is improved (this is exactly how a real
+    board ended up composed of checklist items that should have been
+    form/tasks -- the session that wrote it had no skill file at all, just
+    prior context); a symlink makes that class of bug structurally
+    impossible; there is nothing to "sync" because there is only ever one
+    real copy. Safe to run again: a symlink already pointing at the same
+    canonical dir is a no-op, not an error. Refuses to clobber a real
+    directory/file at the destination (e.g. someone's own hand-copied
+    skill) rather than silently overwriting it."""
+    src = _skill_source_dir()
+    if src is None:
+        print(
+            "erro: não encontrei a skill canónica ao lado desta instalação -- "
+            "isto só funciona quando o painel está instalado com "
+            "'pip install -e' a partir do próprio repositório.",
+            file=sys.stderr,
+        )
+        return 1
+    dest_parent = os.path.join(project_dir, ".claude", "skills")
+    dest = os.path.join(dest_parent, "painel")
+    if os.path.islink(dest):
+        if os.path.realpath(dest) == os.path.realpath(src):
+            print(f"já ligado: {dest} -> {src}")
+            return 0
+        os.remove(dest)  # stale link pointing somewhere else -- replace it
+    elif os.path.exists(dest):
+        print(
+            f"aviso: {dest} já existe e não é uma ligação simbólica -- "
+            f"não vou substituir uma cópia manual. Remove-o à mão se "
+            f"quiseres o link (e a partir daí nunca mais fica desatualizado).",
+            file=sys.stderr,
+        )
+        return 1
+    os.makedirs(dest_parent, exist_ok=True)
+    os.symlink(src, dest)
+    print(f"ligado: {dest} -> {src}")
+    return 0
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="painel", description="pAInel — second interface for CLI agents")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -451,6 +508,9 @@ def main(argv=None) -> int:
     pstat.add_argument("board", nargs="?", default=DEFAULT_BOARD)
 
     sub.add_parser("restart-all", help="restart every running pAInel instance on this machine (same board+port) -- run after upgrading painel")
+
+    pis = sub.add_parser("install-skill", help="symlink the Claude Code skill into a project (always in sync, never a stale copy)")
+    pis.add_argument("project_dir", nargs="?", default=".")
 
     ps = sub.add_parser("serve", help="serve a board.json (blocking, foreground)")
     ps.add_argument("board")
@@ -476,6 +536,8 @@ def main(argv=None) -> int:
         return cmd_status(args.board)
     if args.cmd == "restart-all":
         return cmd_restart_all()
+    if args.cmd == "install-skill":
+        return cmd_install_skill(args.project_dir)
     if args.cmd == "serve":
         _default_agent_status_if_absent(args.board)
         serve(args.board, port=args.port, open_browser=args.open)

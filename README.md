@@ -121,8 +121,20 @@ a line like:
 
 ## Using it inside Claude Code
 
-pAInel ships with a Claude Code **skill** (`.claude/skills/painel/`). Drop it in
-your project and the agent learns to:
+pAInel ships with a Claude Code **skill** (`.claude/skills/painel/`). Install
+it into any project with one command:
+
+```bash
+painel install-skill /path/to/your/project   # defaults to the current dir
+```
+
+This creates a **symlink**, never a copy — the project always sees the exact
+same file as this repo, with zero extra step when the skill itself improves.
+(A copy would drift stale the moment you fix something here; there is only
+ever one real copy of the skill on your machine.) Re-running the command is
+always safe — it's a no-op if the link already points at the right place.
+
+Once installed, the agent learns to:
 
 1. Compose a `board.json` for the session,
 2. Serve it and open it next to the chat,

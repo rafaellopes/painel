@@ -132,5 +132,52 @@ class DiscoverRunningBoardsTest(unittest.TestCase):
         self.assertFalse(os.path.exists(cli._registry_path(port)))
 
 
+class InstallSkillTest(unittest.TestCase):
+    """painel install-skill (symlink, never a copy -- there must only ever
+    be one real copy of the skill, so there is nothing to keep in sync)."""
+
+    def test_symlinks_into_a_project_with_no_existing_skill_dir(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc = cli.cmd_install_skill(d)
+            self.assertEqual(rc, 0)
+            dest = os.path.join(d, ".claude", "skills", "painel")
+            self.assertTrue(os.path.islink(dest))
+            self.assertTrue(os.path.isfile(os.path.join(dest, "SKILL.md")))
+            self.assertEqual(os.path.realpath(dest), os.path.realpath(cli._skill_source_dir()))
+
+    def test_idempotent_when_already_correctly_linked(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(cli.cmd_install_skill(d), 0)
+            self.assertEqual(cli.cmd_install_skill(d), 0)  # second call, same result, no error
+
+    def test_replaces_a_stale_link_pointing_elsewhere(self):
+        with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as elsewhere:
+            dest_parent = os.path.join(d, ".claude", "skills")
+            os.makedirs(dest_parent)
+            stale = os.path.join(dest_parent, "painel")
+            os.symlink(elsewhere, stale)
+            rc = cli.cmd_install_skill(d)
+            self.assertEqual(rc, 0)
+            self.assertEqual(os.path.realpath(stale), os.path.realpath(cli._skill_source_dir()))
+
+    def test_refuses_to_clobber_a_real_directory(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest_parent = os.path.join(d, ".claude", "skills")
+            dest = os.path.join(dest_parent, "painel")
+            os.makedirs(dest)
+            with open(os.path.join(dest, "SKILL.md"), "w") as fh:
+                fh.write("hand-written copy, not a symlink")
+            rc = cli.cmd_install_skill(d)
+            self.assertEqual(rc, 1)
+            self.assertFalse(os.path.islink(dest))  # untouched
+            with open(os.path.join(dest, "SKILL.md")) as fh:
+                self.assertEqual(fh.read(), "hand-written copy, not a symlink")
+
+    def test_skill_source_dir_resolves_to_a_real_existing_directory(self):
+        src = cli._skill_source_dir()
+        self.assertIsNotNone(src)
+        self.assertTrue(os.path.isfile(os.path.join(src, "SKILL.md")))
+
+
 if __name__ == "__main__":
     unittest.main()

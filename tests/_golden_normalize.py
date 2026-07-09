@@ -19,7 +19,7 @@ import re
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-_FRESH_RE = re.compile(r"atualizado (h[áa] [^<]+|em \d{4}-\d{2}-\d{2})")
+_FRESH_RE = re.compile(r"atualizado (agora mesmo|h[áa] [^<]+|em \d{4}-\d{2}-\d{2})")
 
 
 def normalize(html: str) -> str:
