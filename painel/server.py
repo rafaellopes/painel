@@ -361,10 +361,11 @@ def render(board: dict, active_page=None) -> str:
     pending_ids = {str(bid) for bid, _label in pending}
     blocks = "".join(
         f'<div id="blk-{e(b.get("id", ""))}"'
-        f'{" class=\"needs-user\"" if str(b.get("id")) in pending_ids else ""}>'
-        f'{_block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})}'
-        f'{_change_request_box_html(b.get("id", ""))}'
-        f'</div>'
+        + (' class="needs-user"' if str(b.get("id")) in pending_ids else "")
+        + ">"
+        + _block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})
+        + _change_request_box_html(b.get("id", ""))
+        + "</div>"
         for i, b in enumerate(blocks_list)
     )
     # Open change requests card (§12.4) -- board-level state, only shown on
