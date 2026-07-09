@@ -248,6 +248,42 @@ am I still missing a value?* If you're missing a value, it's a
 `question`/`choice`/`form` item — reserve `checklist` for steps whose only
 output is "did you do it".
 
+## Checklist vs tasks/plan — who actually performs the step?
+
+Before writing *any* checklist item, ask a second, prior question: **can I
+(the agent) do this myself — including via browser automation, API calls,
+file operations — or does it truly require the human's own hands,
+credentials, or judgment?** `checklist` exists only for the latter. If you
+can do it yourself, it belongs in `tasks` (pure progress, you flip the
+status) or `plan` (if the human might want to reprioritize/edit/skip it) —
+never `checklist`, because a checklist hands YOUR work to the human and
+asks them to tick it off for you.
+
+Real case caught live: a test plan board had items like
+```
+❌ checklist: "COND-1: Login com condutor em Europe/Lisbon — confirmar que
+   todas as horas exibidas (atividade atual, histórico, notificações) estão
+   corretas"
+```
+This is a browser-testable step — logging into a web app and reading what's
+on screen is exactly the kind of thing you can drive yourself. Handing it to
+the human as a checkbox means either they redo work you could have done, or
+(worse) they just tick it without actually checking, and you both believe
+the test ran when it didn't. The right shape is `tasks`/`plan`, updated by
+*you* as you actually execute each check, with real results going in a
+`log` entry (or a `table` once M2 ships) — not a checkbox the human ticks:
+```
+✅ plan: items: [{"id":"cond1","text":"COND-1: horas corretas em Europe/Lisbon","status":"pending"}, ...]
+```
+you run each step, flip `status` to `done`/`blocked` yourself, and log what
+you actually found. Reserve `checklist` for things genuinely outside your
+reach: physical actions ("assina o documento"), access only the human has
+("faz login com a tua conta pessoal do banco"), or judgment only they can
+give ("confirma que este texto soa bem"). When in doubt, the test is: *if I
+tried to do this myself right now, would I succeed, or would I be blocked
+on something only the human has?* Blocked-on-something-only-they-have is
+the only case that's really a `checklist`.
+
 ## Rules of thumb
 
 - Every interactive block needs a stable, unique `id` — you match events by it.
