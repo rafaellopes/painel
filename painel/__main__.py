@@ -41,6 +41,12 @@ STARTER = {
 
 
 def _demo_board() -> dict:
+    # A path that's guaranteed to exist on any machine running `painel demo`
+    # (this repo's own README), computed at construction time rather than
+    # hardcoded, so the resources block (M11, §15) shows a real freshness
+    # string instead of a permanent "not found" warning.
+    _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    _readme_path = os.path.join(_repo_root, "README.md")
     return {
         "title": "pAInel — demonstração",
         "meta": {"project": "demo", "agent_status": "working"},
@@ -89,6 +95,12 @@ def _demo_board() -> dict:
             {"id": "chat", "type": "chat", "title": "Conversa", "messages": [
                 {"from": "user", "text": "Porque escolheste esta abordagem?"},
                 {"from": "agent", "text": "Porque **X** evita Y — ver decisão em Registo."},
+            ]},
+            {"id": "h6", "type": "heading", "text": "Documentos e mockups (sempre atualizados)"},
+            {"id": "res1", "type": "resources", "title": "Documentos e mockups", "items": [
+                {"label": "README do projeto", "kind": "file", "path": _readme_path},
+                {"label": "Pasta de entregáveis (exemplo)", "kind": "folder", "path": _repo_root},
+                {"label": "Protótipo Figma (exemplo)", "kind": "url", "url": "https://figma.com/file/example"},
             ]},
         ],
         "change_requests": [

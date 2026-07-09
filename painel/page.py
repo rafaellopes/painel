@@ -160,6 +160,19 @@ footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.
 /* --- Hub (M9, docs/SPEC.md §13) -- cards are plain links to each board --- */
 a.hub-card {{ display:block; text-decoration:none; color:inherit; }}
 a.hub-card:hover {{ border-color:var(--accent); }}
+/* --- resources block (M11, docs/SPEC.md §15) --- */
+ul.res-list li.res-item {{ display:flex; align-items:center; gap:.7rem;
+  padding:.4rem 0; border-bottom:1px solid var(--border); }}
+ul.res-list li.res-item:last-child {{ border-bottom:none; }}
+.res-thumb {{ width:34px; height:34px; object-fit:cover; border-radius:6px;
+  flex:none; background:var(--border); }}
+.res-glyph {{ width:34px; height:34px; flex:none; display:flex; align-items:center;
+  justify-content:center; font-size:1.2rem; }}
+.res-label {{ flex:1; min-width:0; }}
+.res-path {{ word-break:break-all; }}
+.res-fresh {{ flex:none; text-align:right; }}
+.res-warn {{ color:var(--blocked); font-size:.8rem; }}
+ul.res-list a {{ color:var(--accent); text-decoration:underline; }}
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav {{ max-width:1040px; }}
 .page-shell {{ display:flex; gap:2rem; align-items:flex-start; }}

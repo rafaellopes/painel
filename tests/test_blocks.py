@@ -1,10 +1,12 @@
 """Per-block tests: render-empty, render-filled, apply-each-event,
 needs_user-both-states, and an escaping regression test per §8 of SPEC.md."""
+import os
+import tempfile
 import unittest
 
 from painel.blocks import REGISTRY
 from painel.blocks import heading, markdown, note, tasks, plan, checklist
-from painel.blocks import question, choice, approval, form, log, chat
+from painel.blocks import question, choice, approval, form, log, chat, resources
 
 XSS = '"<script>alert(1)</script>'
 
@@ -13,7 +15,7 @@ class RegistryTest(unittest.TestCase):
     def test_all_documented_types_registered(self):
         expected = {
             "heading", "markdown", "note", "tasks", "plan", "checklist",
-            "question", "choice", "approval", "form", "log", "chat",
+            "question", "choice", "approval", "form", "log", "chat", "resources",
         }
         self.assertEqual(expected, set(REGISTRY.keys()))
 
@@ -443,6 +445,97 @@ class ChatTest(unittest.TestCase):
         b = {"id": XSS, "type": "chat", "title": XSS,
              "messages": [{"from": XSS, "text": XSS}]}
         html = render_ctx(chat, b)
+        self.assertNotIn("<script", html)
+
+
+class ResourcesTest(unittest.TestCase):
+    def test_render_empty(self):
+        html = render_ctx(resources, {"id": "res1", "type": "resources", "items": []})
+        self.assertIn("res-list", html)
+
+    def test_render_file_shows_recent_freshness(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "mockup.png")
+            with open(path, "w") as fh:
+                fh.write("x")
+            b = {"id": "res1", "type": "resources", "items": [
+                {"label": "Mockup", "kind": "file", "path": path},
+            ]}
+            html = render_ctx(resources, b)
+            self.assertIn("atualizado", html)
+            self.assertNotIn("não encontrado", html)
+
+    def test_render_missing_path_shows_warning_not_crash(self):
+        b = {"id": "res1", "type": "resources", "items": [
+            {"label": "Ficheiro perdido", "kind": "file", "path": "/no/such/path.pdf"},
+        ]}
+        html = render_ctx(resources, b)
+        self.assertIn("ficheiro não encontrado", html)
+
+    def test_render_url_item_no_freshness_target_blank(self):
+        b = {"id": "res1", "type": "resources", "items": [
+            {"label": "Figma", "kind": "url", "url": "https://figma.com/x"},
+        ]}
+        html = render_ctx(resources, b)
+        self.assertNotIn("atualizado", html)
+        self.assertNotIn("não encontrado", html)
+        self.assertIn('target="_blank"', html)
+        self.assertIn('href="https://figma.com/x"', html)
+
+    def test_render_image_file_gets_thumbnail(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "shot.png")
+            with open(path, "w") as fh:
+                fh.write("x")
+            b = {"id": "res1", "type": "resources", "items": [
+                {"label": "Screenshot", "kind": "file", "path": path},
+            ]}
+            html = render_ctx(resources, b)
+            self.assertIn(f'src="file://{path}"', html)
+
+    def test_render_non_image_file_no_thumbnail(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "report.pdf")
+            with open(path, "w") as fh:
+                fh.write("x")
+            b = {"id": "res1", "type": "resources", "items": [
+                {"label": "Relatório", "kind": "file", "path": path},
+            ]}
+            html = render_ctx(resources, b)
+            self.assertNotIn("<img", html)
+            self.assertIn("res-glyph", html)
+
+    def test_render_folder_never_gets_thumbnail(self):
+        with tempfile.TemporaryDirectory() as d:
+            b = {"id": "res1", "type": "resources", "items": [
+                {"label": "Pasta", "kind": "folder", "path": d},
+            ]}
+            html = render_ctx(resources, b)
+            self.assertNotIn("<img", html)
+
+    def test_apply_unknown_event(self):
+        self.assertFalse(resources.apply({"id": "res1"}, {"event": "nonsense"}))
+
+    def test_needs_user_always_empty(self):
+        self.assertEqual(resources.needs_user({"items": [{"kind": "file", "path": "/x"}]}), [])
+
+    def test_watched_paths_excludes_url(self):
+        b = {"id": "res1", "type": "resources", "items": [
+            {"label": "a", "kind": "file", "path": "/tmp/a.png"},
+            {"label": "b", "kind": "folder", "path": "/tmp/b"},
+            {"label": "c", "kind": "url", "url": "https://example.com"},
+        ]}
+        self.assertEqual(resources.watched_paths(b), ["/tmp/a.png", "/tmp/b"])
+
+    def test_watched_paths_empty_when_no_items(self):
+        self.assertEqual(resources.watched_paths({"items": []}), [])
+
+    def test_escaping(self):
+        b = {"id": XSS, "type": "resources", "title": XSS, "items": [
+            {"label": XSS, "kind": "file", "path": XSS},
+            {"label": XSS, "kind": "url", "url": XSS},
+        ]}
+        html = render_ctx(resources, b)
         self.assertNotIn("<script", html)
 
 

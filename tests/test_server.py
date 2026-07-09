@@ -369,6 +369,94 @@ class WhoseTurnSignalTest(unittest.TestCase):
         self.assertNotIn("<script", out)
 
 
+class ResourcesVersionFreshnessTest(unittest.TestCase):
+    """M11 (docs/SPEC.md §15.2): /version's `v` must widen to include the
+    mtime of any path a block's watched_paths() hook returns, so the page
+    auto-refreshes when a linked file changes on disk without any edit to
+    board.json itself. Also pins the backward-compat guarantee: boards with
+    no block defining watched_paths() must see zero change in /version's
+    behavior (it stays exactly board.json's own mtime)."""
+
+    def _run_server(self, board_path):
+        srv._Handler.board_path = board_path
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv._Handler)
+        port = httpd.server_address[1]
+        t = threading.Thread(target=httpd.serve_forever, daemon=True)
+        t.start()
+        return httpd, t, port
+
+    def _version(self, port):
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/version") as r:
+            return json.loads(r.read())["v"]
+
+    def test_version_bumps_when_watched_file_mtime_changes(self):
+        with tempfile.TemporaryDirectory() as d:
+            watched = os.path.join(d, "mockup.png")
+            with open(watched, "w") as fh:
+                fh.write("x")
+            board_path = os.path.join(d, "board.json")
+            srv.save_board(board_path, {
+                "title": "T", "blocks": [
+                    {"id": "res1", "type": "resources", "items": [
+                        {"label": "Mockup", "kind": "file", "path": watched},
+                    ]},
+                ],
+            })
+            httpd, t, port = self._run_server(board_path)
+            try:
+                v1 = self._version(port)
+                # Push the watched file's mtime forward without touching
+                # board.json at all -- this is the whole point of §15.2.
+                future = os.path.getmtime(watched) + 120
+                os.utime(watched, (future, future))
+                v2 = self._version(port)
+                self.assertGreater(v2, v1)
+            finally:
+                httpd.shutdown()
+                t.join()
+                httpd.server_close()
+
+    def test_version_unaffected_when_no_block_defines_watched_paths(self):
+        """Regression guard: every pre-M11 board (no resources block, no
+        block defining watched_paths()) must produce identical /version
+        behavior to before -- v stays exactly board.json's own mtime."""
+        with tempfile.TemporaryDirectory() as d:
+            board_path = os.path.join(d, "board.json")
+            srv.save_board(board_path, {
+                "title": "T", "blocks": [
+                    {"id": "m1", "type": "markdown", "text": "hi"},
+                    {"id": "tk", "type": "tasks", "items": []},
+                ],
+            })
+            httpd, t, port = self._run_server(board_path)
+            try:
+                v = self._version(port)
+                self.assertEqual(v, os.path.getmtime(board_path))
+            finally:
+                httpd.shutdown()
+                t.join()
+                httpd.server_close()
+
+    def test_missing_watched_path_ignored_not_error(self):
+        with tempfile.TemporaryDirectory() as d:
+            board_path = os.path.join(d, "board.json")
+            srv.save_board(board_path, {
+                "title": "T", "blocks": [
+                    {"id": "res1", "type": "resources", "items": [
+                        {"label": "Perdido", "kind": "file", "path": "/no/such/path"},
+                    ]},
+                ],
+            })
+            httpd, t, port = self._run_server(board_path)
+            try:
+                v = self._version(port)  # must not raise / must not 500
+                self.assertEqual(v, os.path.getmtime(board_path))
+            finally:
+                httpd.shutdown()
+                t.join()
+                httpd.server_close()
+
+
 class LiveHTTPTest(unittest.TestCase):
     """End-to-end smoke test against a real running server on a random port."""
 

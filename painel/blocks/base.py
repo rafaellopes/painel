@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import time
 
 
 def e(s) -> str:
@@ -60,3 +61,27 @@ def status_chip_text(pending: int, status: str, has_resolved: bool) -> str:
     if has_resolved:
         return "✅ Tudo feito"
     return "⚪ Agente offline"
+
+
+# --------------------------------------------------------------------------- #
+# Relative-time formatting (M11, docs/SPEC.md §15.2) -- shared here (not just  #
+# resources.py) so any future block that points at something on disk can      #
+# reuse it. No equivalent existed anywhere in the codebase before M11.        #
+# --------------------------------------------------------------------------- #
+def relative_time(ts: float, now: float | None = None) -> str:
+    """"atualizado há Xm/h/d" for a unix timestamp, falling back to an
+    absolute date beyond ~7 days (§15.2). `now` is injectable for tests."""
+    now = time.time() if now is None else now
+    delta = max(0, now - ts)
+    minutes = int(delta // 60)
+    if minutes < 1:
+        return "atualizado agora mesmo"
+    if minutes < 60:
+        return f"atualizado há {minutes} min"
+    hours = minutes // 60
+    if hours < 24:
+        return f"atualizado há {hours}h"
+    days = hours // 24
+    if days < 7:
+        return f"atualizado há {days}d"
+    return f"atualizado em {time.strftime('%Y-%m-%d', time.localtime(ts))}"

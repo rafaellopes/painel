@@ -15,11 +15,17 @@ import os
 from painel.__main__ import _demo_board
 from painel.server import render
 
+from ._golden_normalize import normalize
+
 GOLDEN_PATH = os.path.join(os.path.dirname(__file__), "golden", "demo.html")
 
 
 def main() -> int:
-    new_html = render(_demo_board())
+    # Normalized (see _golden_normalize.py): the M11 resources example bakes
+    # in this machine's absolute repo path and a wall-clock-dependent
+    # freshness string, neither of which belongs in a file committed to a
+    # public repo or compared byte-for-byte days/months after regeneration.
+    new_html = normalize(render(_demo_board()))
 
     old_html = None
     if os.path.exists(GOLDEN_PATH):

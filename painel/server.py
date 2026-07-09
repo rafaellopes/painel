@@ -102,6 +102,31 @@ def _needs_user(board: dict) -> list:
     return out
 
 
+def _watched_paths_mtime(board: dict) -> float:
+    """M11 (docs/SPEC.md §15.2): max mtime across every path any block's
+    optional watched_paths(block) hook returns. Generic and block-type
+    agnostic -- calls REGISTRY[type].watched_paths(block) only when the
+    module actually defines it (most blocks won't; use getattr, not a
+    name check), so any future block type can opt into the same
+    auto-refresh mechanism without ever touching this function again.
+    Missing paths (or blocks without the hook) are silently ignored, never
+    an error -- matches every other graceful-degradation rule in this file."""
+    best = 0.0
+    for b in board.get("blocks", []):
+        mod = REGISTRY.get(b.get("type"))
+        if mod is None:
+            continue
+        watched_paths = getattr(mod, "watched_paths", None)
+        if watched_paths is None:
+            continue
+        for p in watched_paths(b):
+            try:
+                best = max(best, os.path.getmtime(p))
+            except OSError:
+                pass
+    return best
+
+
 # --------------------------------------------------------------------------- #
 # Change requests (M8, docs/SPEC.md §12)                                      #
 # --------------------------------------------------------------------------- #
@@ -449,6 +474,13 @@ class _Handler(BaseHTTPRequestHandler):
             # full reload -- reload only happens when the version itself changes.
             with _lock:
                 board = load_board(self.board_path)
+            # M11 (docs/SPEC.md §15.2): fold in the mtime of any on-disk path a
+            # block cares about, via the generic, block-type-agnostic
+            # watched_paths() hook (§2.1) -- so the page auto-refreshes when a
+            # linked file/folder changes, not just when board.json itself does.
+            # Deliberately NOT special-cased to "resources" by name: any block
+            # type, present or future, gets this for free by defining the hook.
+            v = max(v, _watched_paths_mtime(board))
             blocks_list = board.get("blocks", [])
             total = len(blocks_list)
             blocks_html = "".join(
