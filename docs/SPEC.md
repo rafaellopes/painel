@@ -101,6 +101,14 @@ SILENT_EVENTS: set[str] = set()
 JS: str = ""
     """Optional JS functions this block needs, appended once to the page.
     Plain string, no f-string braces issues — page.py joins them."""
+
+def watched_paths(block: dict) -> list[str]:
+    """Optional (M11, §15). Absolute filesystem paths whose mtime should be
+    folded into `/version`'s freshness signal, so the page auto-refreshes
+    when a file the board points at changes on disk -- not just when
+    board.json itself changes. Return [] (or omit the function entirely) if
+    a block has nothing on disk to watch. Missing paths are silently
+    ignored by the caller, never raise."""
 ```
 
 `blocks/__init__.py` builds `REGISTRY` by importing every sibling module
@@ -150,7 +158,7 @@ before/after. CLI, endpoints, board.json format, event names: untouched.
 | Method | Path | Behavior |
 |---|---|---|
 | GET | `/` | Render full page from board.json |
-| GET | `/version` | `{"v": <mtime float>}` — poller uses it |
+| GET | `/version` | `{"v": <mtime float>, ...}` — poller uses `v`; see §15.2 for M11's freshness extension |
 | POST | `/event` | Apply JSON body, persist board, emit JSONL |
 
 ### 3.3 Events (JSONL, one per line on stdout and `<board>.log`)
@@ -262,13 +270,8 @@ Read-only cells as text; `editable` columns render inputs/checkboxes.
 "Confirmar tabela" button → event `table_confirm {rows}` (full rows back).
 Pending until `confirmed`. Horizontal scroll inside the card on overflow.
 
-**`links`** — curated resources/outputs.
-```jsonc
-{ "id":"l1","type":"links","title":"Documentos gerados",
-  "items":[{"label":"Minuta v2 (PDF)","url":"file:///…","kind":"file"},
-           {"label":"Portal AT","url":"https://…","kind":"external"}] }
-```
-Render as list with kind icon. No events, never pending. `target=_blank`.
+**`resources`** — see §15 (M11), full spec, supersedes the earlier
+`links` stub (never implemented, name freely reassignable).
 
 **`gauge`** — one number that matters.
 ```jsonc
@@ -729,6 +732,101 @@ feel optional).
 
 ---
 
+## 15. The `resources` block (M11) — full spec
+
+**Problem this solves:** several of Rafael's real projects each accumulate a
+handful of documents/mockups/reference links (a design mockup, a generated
+report, a Figma prototype, a spec doc) that the human needs quick access to
+— and that keep changing as work progresses. A static list requires the
+agent to re-describe it every time something changes, which both wastes
+chat turns and drifts out of sync (§14.2's whole point — the board should
+be the thing that's current, not a snapshot the agent narrates around).
+
+### 15.1 Board shape
+
+```jsonc
+{ "id": "res1", "type": "resources", "title": "Documentos e mockups",
+  "items": [
+    { "label": "Mockup landing v3", "kind": "file",
+      "path": "/Users/rafael/Desktop/mockup-v3.png" },
+    { "label": "Pasta de entregáveis", "kind": "folder",
+      "path": "/Users/rafael/projects/acme/deliverables" },
+    { "label": "Protótipo Figma", "kind": "url",
+      "url": "https://figma.com/file/..." }
+  ] }
+```
+
+- `kind`: `"file"` | `"folder"` | `"url"`. `file`/`folder` carry an absolute
+  local `path`; `url` carries an external `url`. Never both on one item.
+- No `id` needed per item (read-only block, no events target individual
+  items) — but keep items order-stable (it's a plain list, order = board
+  order, no reordering UI in v1).
+
+### 15.2 Live freshness (the "sempre atualizados" requirement)
+
+Two layers, both server-side, both computed fresh on every request (no
+caching, matching every other freshness mechanism already in this codebase
+— `_needs_user()`, the hub's registry re-read, etc.):
+
+1. **Per-item freshness text.** For `kind in ("file", "folder")`, `render()`
+   calls `os.stat(path)` at render time and shows a relative "atualizado há
+   Xm/h/d" (or an absolute date beyond ~7 days — reuse whatever relative-time
+   helper already exists in the codebase if there is one, otherwise write a
+   small one in `blocks/base.py` so future blocks can reuse it too). A
+   missing path renders a clear inline warning ("⚠ ficheiro não encontrado")
+   instead of crashing or silently omitting the item — graceful degradation
+   per §0's constraint 5, and useful signal (a moved/deleted mockup should
+   be visible, not silently stale). `kind: "url"` items never show
+   freshness (external, not ours to stat) — just the link with an
+   external-link icon, `target="_blank"`.
+2. **Page-level auto-refresh on file change.** This is the piece that makes
+   the block *actually* stay current without the human refreshing manually:
+   `watched_paths(block)` (the new optional module hook, §2.1) returns every
+   `file`/`folder` item's `path`. The `/version` endpoint's `v` value
+   becomes `max(board.json's own mtime, every registered block's
+   watched_paths() mtimes)` — computed by having `server.py`'s `/version`
+   handler iterate all blocks, call `REGISTRY[type].watched_paths(block)`
+   when the module defines it (skip silently if not — most blocks won't),
+   `os.path.getmtime()` each returned path inside a try/except (missing
+   path → ignored, not an error), and take the max alongside the board's
+   own mtime. The existing poll/reload machinery (§6.3) needs zero changes
+   — it already reloads whenever `v` changes; it just now changes for a
+   wider set of reasons. A `folder`'s mtime only reflects changes to the
+   folder's own immediate directory entries (files added/removed), not
+   arbitrary nested file edits — document this as a known, acceptable
+   limitation in a code comment rather than implementing recursive
+   directory watching (that's real complexity for a niche need; if it turns
+   out to matter, revisit later — don't build it preemptively).
+
+### 15.3 Thumbnails
+
+For `kind: "file"` items whose path has a common image extension (`.png`,
+`.jpg`, `.jpeg`, `.gif`, `.svg`, `.webp`, case-insensitive), render a small
+inline thumbnail via `<img src="file://<path>">`. This is safe and simple:
+loading an image resource (unlike `fetch`/XHR, and unlike *navigating* to a
+`file://` link) is not subject to the same-origin restrictions that make
+`file://` awkward elsewhere in browsers, so this works with zero server-side
+image-serving code. Non-image files just show a small icon-by-extension (or
+a generic file glyph — keep this simple, don't build a MIME-type icon set).
+Folders never get a thumbnail. Local paths (`file`/`folder`) are shown as
+monospace text, not a clickable navigation link — clicking a `file://` href
+to *navigate* is unreliable across browsers/OSes for security reasons; only
+`url` items are real clickable links. This is a deliberate, documented
+limitation, not a bug to fix later.
+
+### 15.4 Non-goals for M11
+
+No upload/edit of items from the UI (composed by the agent only, like every
+other read-only block — `tasks`, `log`, etc.). No recursive folder watching
+(§15.2). No remote/network paths (local filesystem only — this block only
+makes sense for a human and agent sharing the same machine, which is
+pAInel's whole model anyway, §0). No new public API beyond the
+`watched_paths()` hook, which is generically useful to any *future* block
+that points at something on disk — do not special-case `resources` inside
+`server.py`'s `/version` handler beyond calling the generic hook.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -743,6 +841,7 @@ feel optional).
 | **M8** | Change requests (§12): universal `change_request` event, generic ✎ per-block button + global "➕ Pedir alteração" affordance, `change_requests` board-level array, skill guidance | ✎ button appears on every block type without touching any `blocks/*.py` module; global affordance works with `block: null`; open requests render as their own card and do NOT appear in the human-facing attention bar (§12.4); skill updated |
 | **M9** | The hub (§13): `painel hub` on a fixed port (default 8765) listing every live instance from the §6.6 registry with pending badges + status chip, click-through to that board | Hub reflects registry changes on every refresh, no caching; a board with zero registry entries shows an empty-but-not-broken hub; no new public block type added for this |
 | **M10** | Tab hygiene + chat-pointer convention (§14): BroadcastChannel duplicate-tab self-close, skill rule that chat replies point at the board instead of restating it | Opening the same board twice in two tabs results in one tab closing itself with a visible notice, the other pulsing; skill doc updated with the one-line-plus-link convention |
+| **M11** | `resources` block (§15): file/folder/url items, live per-item freshness text, thumbnails for images, generic `watched_paths()` hook + `/version` freshness extension so the page auto-refreshes when a linked file changes on disk | Passes §5.4 DoD; a board with a `resources` block auto-reloads when a watched file's mtime changes, without any board.json edit; missing paths render a visible warning, never crash; `watched_paths()` being absent on every other block type causes zero behavior change (backward compatible) |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
