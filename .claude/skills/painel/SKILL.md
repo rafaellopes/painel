@@ -154,6 +154,23 @@ every other event does, and it does **not** show up in the human-facing
 attention bar (that bar is only for what's waiting on the human; an open
 change request is something *you* owe a resolution to).
 
+**Per-item ❓ (checklist today, any future item-bearing block the same way):**
+a checklist also gets a small ❓ next to each individual step, for when a
+specific item is unclear rather than the whole block — the human ticking a
+box shouldn't be their only way to react to a step they don't understand.
+Same event, with an extra `item`:
+```json
+{"event":"change_request", "block":"prep", "item":"p2", "value":"não sei onde arranjar isto"}
+```
+The resulting `change_requests` entry carries `"item":"p2"` alongside
+`"block"` — resolve it exactly like any other (edit the item, answer the
+question inline in your reply, or convert it into a proper `question`/
+`form` if it turns out the item was really hiding a data request, see
+"Checklist vs question/form" below). If you're authoring a new block type
+whose items can be individually ambiguous, reuse
+`blocks.base.item_change_request_html(block_id, item_id)` rather than
+inventing a per-item mechanism from scratch.
+
 On receiving `change_request`:
 1. If the request is clear enough to act on immediately, **apply it** —
    edit the relevant block(s), or add/adjust whatever it's asking for.

@@ -263,6 +263,64 @@ class ChangeRequestTest(unittest.TestCase):
         html = srv.render(board)
         self.assertNotIn("<script>alert(1)</script>", html)
 
+    def test_change_request_with_item_appends_item_field(self):
+        # M12: the ❓ on a specific checklist item posts the same event with
+        # an extra 'item' -- still handled entirely by the generic
+        # change_request path, never dispatched into checklist.apply().
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            srv.save_board(path, {"blocks": [
+                {"id": "prep", "type": "checklist", "title": "t",
+                 "items": [{"id": "p2", "text": "Ter 2 contas de teste", "checked": False}]},
+            ]})
+            silent = self._handler_apply(
+                path, {"event": "change_request", "block": "prep", "item": "p2",
+                       "value": "não sei onde arranjar isto"}
+            )
+            self.assertFalse(silent)
+            board = srv.load_board(path)
+            cr = board["change_requests"][0]
+            self.assertEqual(cr["block"], "prep")
+            self.assertEqual(cr["item"], "p2")
+            self.assertEqual(cr["text"], "não sei onde arranjar isto")
+            # The checklist item itself must be untouched -- this event never
+            # reaches checklist.apply()/its 'check' handler.
+            self.assertFalse(board["blocks"][0]["items"][0]["checked"])
+
+    def test_change_request_without_item_still_defaults_to_none(self):
+        # Backward compat: every change_request before M12 had no 'item' key
+        # at all -- .get("item") must keep returning None, not KeyError/crash.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "board.json")
+            srv.save_board(path, {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}]})
+            self._handler_apply(path, {"event": "change_request", "block": "regras", "value": "muda"})
+            board = srv.load_board(path)
+            self.assertIsNone(board["change_requests"][0]["item"])
+
+    def test_open_change_request_with_item_shows_item_text_and_link(self):
+        board = {"blocks": [{"id": "prep", "type": "checklist", "title": "t", "items": [
+            {"id": "p2", "text": "Ter 2 contas de teste", "checked": False},
+        ]}], "change_requests": [
+            {"id": "cr1", "block": "prep", "item": "p2", "text": "não sei onde arranjar isto",
+             "status": "open", "ts": ""},
+        ]}
+        html = srv.render(board)
+        self.assertIn("não sei onde arranjar isto", html)
+        self.assertIn("Ter 2 contas de teste", html)  # resolved item text, not just the id
+        self.assertIn("#blk-prep", html)
+
+    def test_open_change_request_with_item_still_excluded_from_attention_bar(self):
+        # Item already checked (no other source of pending) -- isolates that
+        # the open change request itself contributes nothing to the bar.
+        board = {"blocks": [{"id": "prep", "type": "checklist", "title": "t", "items": [
+            {"id": "p2", "text": "x", "checked": True},
+        ]}], "change_requests": [
+            {"id": "cr1", "block": "prep", "item": "p2", "text": "y", "status": "open", "ts": ""},
+        ]}
+        self.assertEqual(srv._needs_user(board), [])
+        html = srv.render(board)
+        self.assertNotIn('class="attention"', html)
+
 
 class WhoseTurnSignalTest(unittest.TestCase):
     """M5 (SPEC.md §10): meta.agent_status drives <title>/favicon/chip."""

@@ -63,11 +63,14 @@ button.ico:disabled:hover { color:var(--muted); border-color:var(--border); }
 .thread-msg.user { background:var(--border); align-self:flex-end; }
 .thread-msg.agent { background:rgba(125,211,252,.15); align-self:flex-start; }
 .thread-msg b { font-weight:600; }
-ul.checklist li { padding:.4rem 0; border-bottom:1px solid var(--border); }
+ul.checklist li { padding:.4rem 0; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-start; justify-content:space-between; gap:.4rem; flex-wrap:wrap; }
 ul.checklist li:last-child { border-bottom:none; }
-ul.checklist label { display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; }
+ul.checklist label { display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; flex:1; }
 ul.checklist input { margin-top:.28rem; width:16px; height:16px; accent-color:var(--accent); flex:none; }
 ul.checklist li.checked span { color:var(--muted); text-decoration:line-through; }
+ul.checklist .item-cr-btn { flex:none; }
+ul.checklist li .cr-box { width:100%; order:3; margin-top:.3rem; }
 ul.log li { padding:.28rem 0; border-bottom:1px solid var(--border); }
 ul.log li:last-child { border-bottom:none; }
 textarea, input, select { width:100%; padding:.5rem .6rem; margin-top:.3rem;
@@ -178,7 +181,7 @@ body.has-nav { max-width:1040px; }
   <div class="metaline">Projeto: demo</div>
   <div id="status-chip" class="status-chip">🔴 À espera de ti (5)</div>
 </header>
-<div id="blk-h1"><h2 class="section">O que é</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h1')">&#9998;</button></div><div id="cr-box-h1" class="cr-box" style="display:none"><textarea id="cr-ta-h1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h1')">Enviar pedido</button></div></div><div id="blk-m1"><div class="card md">O <strong>pAInel</strong> é a segunda interface do teu agente. Cada bloco em baixo é um <code>tipo</code> diferente de interação.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('m1')">&#9998;</button></div><div id="cr-box-m1" class="cr-box" style="display:none"><textarea id="cr-ta-m1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('m1')">Enviar pedido</button></div></div><div id="blk-note"><div class="card note note-info">Marca uma checkbox ou responde a uma pergunta — o agente é notificado na hora.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('note')">&#9998;</button></div><div id="cr-box-note" class="cr-box" style="display:none"><textarea id="cr-ta-note" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('note')">Enviar pedido</button></div></div><div id="blk-h2"><h2 class="section">Atividades manuais (tuas)</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2')">&#9998;</button></div><div id="cr-box-h2" class="cr-box" style="display:none"><textarea id="cr-ta-h2" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2')">Enviar pedido</button></div></div><div id="blk-cl" class="needs-user"><div class="card"><h3>Faz isto e marca</h3><ul class="checklist"><li class=""><label><input type="checkbox"  onchange="check('cl','c1',this.checked)"><span>Fazer login no portal X</span></label></li><li class=""><label><input type="checkbox"  onchange="check('cl','c2',this.checked)"><span>Descarregar o <strong>PDF</strong> do relatório</span></label></li><li class=""><label><input type="checkbox"  onchange="check('cl','c3',this.checked)"><span>Colocar o ficheiro em <code>~/Downloads</code></span></label></li></ul></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('cl')">&#9998;</button></div><div id="cr-box-cl" class="cr-box" style="display:none"><textarea id="cr-ta-cl" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('cl')">Enviar pedido</button></div></div><div id="blk-h2b"><h2 class="section">Um plano que se controla, não só se lê</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2b')">&#9998;</button></div><div id="cr-box-h2b" class="cr-box" style="display:none"><textarea id="cr-ta-h2b" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2b')">Enviar pedido</button></div></div><div id="blk-pl"><div class="card"><h3>Plano</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="plan-items"><li class="plan-item">
+<div id="blk-h1"><h2 class="section">O que é</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h1')">&#9998;</button></div><div id="cr-box-h1" class="cr-box" style="display:none"><textarea id="cr-ta-h1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h1')">Enviar pedido</button></div></div><div id="blk-m1"><div class="card md">O <strong>pAInel</strong> é a segunda interface do teu agente. Cada bloco em baixo é um <code>tipo</code> diferente de interação.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('m1')">&#9998;</button></div><div id="cr-box-m1" class="cr-box" style="display:none"><textarea id="cr-ta-m1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('m1')">Enviar pedido</button></div></div><div id="blk-note"><div class="card note note-info">Marca uma checkbox ou responde a uma pergunta — o agente é notificado na hora.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('note')">&#9998;</button></div><div id="cr-box-note" class="cr-box" style="display:none"><textarea id="cr-ta-note" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('note')">Enviar pedido</button></div></div><div id="blk-h2"><h2 class="section">Atividades manuais (tuas)</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2')">&#9998;</button></div><div id="cr-box-h2" class="cr-box" style="display:none"><textarea id="cr-ta-h2" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2')">Enviar pedido</button></div></div><div id="blk-cl" class="needs-user"><div class="card"><h3>Faz isto e marca</h3><ul class="checklist"><li class=""><label><input type="checkbox"  onchange="check('cl','c1',this.checked)"><span>Fazer login no portal X</span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c1')">&#10067;</button><div id="cr-box-cl-c1" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c1" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c1')">Enviar</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c2',this.checked)"><span>Descarregar o <strong>PDF</strong> do relatório</span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c2')">&#10067;</button><div id="cr-box-cl-c2" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c2" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c2')">Enviar</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c3',this.checked)"><span>Colocar o ficheiro em <code>~/Downloads</code></span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c3')">&#10067;</button><div id="cr-box-cl-c3" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c3" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c3')">Enviar</button></div></li></ul></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('cl')">&#9998;</button></div><div id="cr-box-cl" class="cr-box" style="display:none"><textarea id="cr-ta-cl" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('cl')">Enviar pedido</button></div></div><div id="blk-h2b"><h2 class="section">Um plano que se controla, não só se lê</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2b')">&#9998;</button></div><div id="cr-box-h2b" class="cr-box" style="display:none"><textarea id="cr-ta-h2b" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2b')">Enviar pedido</button></div></div><div id="blk-pl"><div class="card"><h3>Plano</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="plan-items"><li class="plan-item">
               <div class="plan-row">
                 <span class="dot done"></span>
                 <span class="plan-text done-text">Ler configuração</span>
@@ -343,6 +346,7 @@ function _crToggleBox(key) {
 }
 function crToggle(bid) { _crToggleBox(bid); }
 function crToggleGlobal() { _crToggleBox('global'); }
+function crToggleItem(bid, iid) { _crToggleBox(bid + '-' + iid); }
 function crSend(bid) {
   const ta = document.getElementById('cr-ta-' + bid);
   const v = ta.value;
@@ -354,6 +358,16 @@ function crSendGlobal() {
   const v = ta.value;
   if (!v.trim()) return;
   send({event:'change_request', block:null, value:v}).then(reloadSoon);
+}
+// Per-item ❓ (M12): same box/key convention as crToggle/crSend, just a
+// composite 'block-item' key -- _crToggleBox and the reopen-on-reload loop
+// below need zero changes to support this.
+function crSendItem(bid, iid) {
+  const key = bid + '-' + iid;
+  const ta = document.getElementById('cr-ta-' + key);
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({event:'change_request', block:bid, item:iid, value:v}).then(reloadSoon);
 }
 // Re-open ✎ boxes the user had open before the last reload.
 for (const key of _openCrBoxes()) {

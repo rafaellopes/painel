@@ -827,6 +827,58 @@ that points at something on disk — do not special-case `resources` inside
 
 ---
 
+## 16. Per-item change requests (M12)
+
+**Problem this solves:** the block-level ✎ (§12) covers "something about
+this whole card needs to change", but a `checklist` with several steps often
+has exactly one item the human doesn't understand or can't act on (a real
+example: "Correr no terminal: bash scripts/set_tasty.sh (colar client
+secret + refresh token, ocultos)" — unclear which secret, from where). The
+human's only prior recourse was leaving it unchecked forever or asking in
+chat, both of which defeat the board.
+
+### 16.1 Mechanism
+
+A small ❓ button next to each item of a block that opts in, posting the
+*same* `change_request` event (§12.1) with an added `item` field:
+```json
+{"event":"change_request", "block":"prep", "item":"p2", "value":"não sei onde arranjar isto"}
+```
+Handled by the exact same generic path as the block-level/global ✎ — never
+dispatched through the block's own `apply()`. The stored
+`change_requests` entry gains `"item"` (`None` when absent, i.e. every
+change request from before M12 or from the block-level/global affordance —
+fully backward compatible). The "Pedidos em aberto" card resolves the
+item's own `text` for display when possible, so the open-requests list is
+readable without opening the board to figure out which of N items the human
+meant. Still excluded from the human-facing attention bar, same reasoning
+as §12.4 (it's the agent's turn, not the human's).
+
+### 16.2 Shared helper, not a bespoke mechanism per block
+
+`blocks.base.item_change_request_html(block_id, item_id)` renders the
+button + inline box, reusing the *exact* `cr-box-<key>`/`cr-ta-<key>` DOM id
+convention and `page.py`'s existing `_crToggleBox`/sessionStorage
+persistence from §12.2 — the key is just `<block>-<item>` instead of
+`<block>`, so open/closed state across reloads works for free, no new
+client-side persistence logic. Only `crToggleItem(bid,iid)`/
+`crSendItem(bid,iid)` needed adding to page.py's JS. `checklist.py` is the
+first (and, as of M12, only) consumer — any future item-bearing block
+(`table`, once M2 ships) should call the same helper rather than inventing
+its own per-item ask-a-question mechanism.
+
+### 16.3 Non-goals
+
+Not a full conversation thread like `plan`'s per-item 💬 (§5.1) — that
+pattern stays bespoke to `plan` where a back-and-forth about *reprioritizing
+a step* is the common case. The change-request ❓ is a single ask, resolved
+the same way any change request is resolved (§12's existing 4-step flow).
+No new block-module contract hook — `item_change_request_html` is a shared
+render-time helper a module calls from inside its own `render()`, not a
+`§2.1`-style optional attribute the registry auto-discovers.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -842,6 +894,7 @@ that points at something on disk — do not special-case `resources` inside
 | **M9** | The hub (§13): `painel hub` on a fixed port (default 8765) listing every live instance from the §6.6 registry with pending badges + status chip, click-through to that board | Hub reflects registry changes on every refresh, no caching; a board with zero registry entries shows an empty-but-not-broken hub; no new public block type added for this |
 | **M10** | Tab hygiene + chat-pointer convention (§14): BroadcastChannel duplicate-tab self-close, skill rule that chat replies point at the board instead of restating it | Opening the same board twice in two tabs results in one tab closing itself with a visible notice, the other pulsing; skill doc updated with the one-line-plus-link convention |
 | **M11** | `resources` block (§15): file/folder/url items, live per-item freshness text, thumbnails for images, generic `watched_paths()` hook + `/version` freshness extension so the page auto-refreshes when a linked file changes on disk | Passes §5.4 DoD; a board with a `resources` block auto-reloads when a watched file's mtime changes, without any board.json edit; missing paths render a visible warning, never crash; `watched_paths()` being absent on every other block type causes zero behavior change (backward compatible) |
+| **M12** | Per-item change requests (§16): ❓ next to each `checklist` item, shared `item_change_request_html()` helper, `item` field on `change_requests` entries | `change_requests` entries carry `item` (None when absent, backward compatible); resolved item text shown in "Pedidos em aberto"; still excluded from the attention bar; open/closed box state persists across reloads via the existing generic mechanism, no new client-side persistence code |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each

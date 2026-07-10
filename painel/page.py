@@ -84,11 +84,14 @@ button.ico:disabled:hover {{ color:var(--muted); border-color:var(--border); }}
 .thread-msg.user {{ background:var(--border); align-self:flex-end; }}
 .thread-msg.agent {{ background:rgba(125,211,252,.15); align-self:flex-start; }}
 .thread-msg b {{ font-weight:600; }}
-ul.checklist li {{ padding:.4rem 0; border-bottom:1px solid var(--border); }}
+ul.checklist li {{ padding:.4rem 0; border-bottom:1px solid var(--border);
+  display:flex; align-items:flex-start; justify-content:space-between; gap:.4rem; flex-wrap:wrap; }}
 ul.checklist li:last-child {{ border-bottom:none; }}
-ul.checklist label {{ display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; }}
+ul.checklist label {{ display:flex; gap:.6rem; align-items:flex-start; cursor:pointer; flex:1; }}
 ul.checklist input {{ margin-top:.28rem; width:16px; height:16px; accent-color:var(--accent); flex:none; }}
 ul.checklist li.checked span {{ color:var(--muted); text-decoration:line-through; }}
+ul.checklist .item-cr-btn {{ flex:none; }}
+ul.checklist li .cr-box {{ width:100%; order:3; margin-top:.3rem; }}
 ul.log li {{ padding:.28rem 0; border-bottom:1px solid var(--border); }}
 ul.log li:last-child {{ border-bottom:none; }}
 textarea, input, select {{ width:100%; padding:.5rem .6rem; margin-top:.3rem;
@@ -270,6 +273,7 @@ function _crToggleBox(key) {{
 }}
 function crToggle(bid) {{ _crToggleBox(bid); }}
 function crToggleGlobal() {{ _crToggleBox('global'); }}
+function crToggleItem(bid, iid) {{ _crToggleBox(bid + '-' + iid); }}
 function crSend(bid) {{
   const ta = document.getElementById('cr-ta-' + bid);
   const v = ta.value;
@@ -281,6 +285,16 @@ function crSendGlobal() {{
   const v = ta.value;
   if (!v.trim()) return;
   send({{event:'change_request', block:null, value:v}}).then(reloadSoon);
+}}
+// Per-item ❓ (M12): same box/key convention as crToggle/crSend, just a
+// composite 'block-item' key -- _crToggleBox and the reopen-on-reload loop
+// below need zero changes to support this.
+function crSendItem(bid, iid) {{
+  const key = bid + '-' + iid;
+  const ta = document.getElementById('cr-ta-' + key);
+  const v = ta.value;
+  if (!v.trim()) return;
+  send({{event:'change_request', block:bid, item:iid, value:v}}).then(reloadSoon);
 }}
 // Re-open ✎ boxes the user had open before the last reload.
 for (const key of _openCrBoxes()) {{

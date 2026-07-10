@@ -85,3 +85,33 @@ def relative_time(ts: float, now: float | None = None) -> str:
     if days < 7:
         return f"atualizado há {days}d"
     return f"atualizado em {time.strftime('%Y-%m-%d', time.localtime(ts))}"
+
+
+# --------------------------------------------------------------------------- #
+# Per-item change requests (M12) -- opt-in helper for any block whose items   #
+# have a stable id and where per-item ambiguity is common enough to need a    #
+# dedicated "ask about this one" affordance, not just the block-level ✎.      #
+# checklist.py is the first consumer (a manual step that's unclear/ambiguous  #
+# to the human is exactly the case that motivated this); any future          #
+# item-bearing block (e.g. table, M2) can reuse this the same way instead of #
+# inventing its own per-item mechanism.                                      #
+# --------------------------------------------------------------------------- #
+def item_change_request_html(block_id, item_id) -> str:
+    """Small ❓ button + inline collapsed box, scoped to one item inside a
+    block. Reuses the exact same generic 'cr-box-<key>'/'cr-ta-<key>' DOM id
+    convention and page.py's `_crToggleBox`/sessionStorage persistence as the
+    block-level change-request box (docs/SPEC.md §12) -- the key is just
+    '<block>-<item>' instead of '<block>', so open/closed state survives
+    reloads for free, no new JS plumbing beyond the send call itself
+    (`crToggleItem`/`crSendItem` in page.py)."""
+    bid, iid = e(block_id), e(item_id)
+    key = f"{bid}-{iid}"
+    return (
+        f'<button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" '
+        f'onclick="crToggleItem(\'{bid}\',\'{iid}\')">&#10067;</button>'
+        f'<div id="cr-box-{key}" class="cr-box" style="display:none">'
+        f'<textarea id="cr-ta-{key}" data-orig="" '
+        f'placeholder="O que precisas de saber ou mudar neste passo?"></textarea>'
+        f'<button onclick="crSendItem(\'{bid}\',\'{iid}\')">Enviar</button>'
+        f'</div>'
+    )

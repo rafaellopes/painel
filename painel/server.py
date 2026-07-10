@@ -140,11 +140,16 @@ def _append_change_request(board: dict, data: dict) -> dict:
     later removed/changed. `ts` is left to the agent to fill in later (the
     server does not generate timestamps, matching every other event in this
     codebase); a numeric, monotonic `id` is generated here purely so the
-    agent has something stable to reference when flipping `status`."""
+    agent has something stable to reference when flipping `status`.
+    `item` (M12) is optional -- present when the request came from a
+    per-item ❓ (docs/SPEC.md §12, checklist.py's item_change_request_html),
+    absent/None for the ordinary block-level ✎ or the global affordance,
+    exactly as before."""
     crs = board.setdefault("change_requests", [])
     cr = {
         "id": f"cr{len(crs) + 1}",
         "block": data.get("block"),
+        "item": data.get("item"),
         "text": data.get("value", ""),
         "status": "open",
         "ts": "",
@@ -161,16 +166,32 @@ def _change_requests_html(board: dict) -> str:
     if not open_crs:
         return ""
     block_page = {str(b.get("id")): b.get("page") for b in board.get("blocks", [])}
+    block_by_id = {str(b.get("id")): b for b in board.get("blocks", [])}
     rows = []
     for cr in open_crs:
         text = e(cr.get("text", ""))
         bid = cr.get("block")
+        item_id = cr.get("item")
+        item_suffix = ""
+        if bid and item_id:
+            # Resolve the item's own text (M12) so "Pedidos em aberto" is
+            # readable without opening the board to figure out which of N
+            # checklist items the human meant -- best-effort, falls back to
+            # nothing if the item was since removed/renamed.
+            blk = block_by_id.get(str(bid))
+            item_text = next(
+                (it.get("text") for it in (blk.get("items", []) if blk else [])
+                 if str(it.get("id")) == str(item_id)),
+                None,
+            )
+            if item_text:
+                item_suffix = f' — <em>{e(item_text)}</em>'
         if bid:
             href = f"{_page_href(block_page.get(str(bid)))}#blk-{e(bid)}"
             link = f' <a href="{e(href)}">→ {e(bid)}</a>'
         else:
             link = ""
-        rows.append(f"<li>{text}{link}</li>")
+        rows.append(f"<li>{text}{item_suffix}{link}</li>")
     return (
         '<div class="card cr-card"><h3>Pedidos em aberto</h3>'
         f'<ul class="log">{"".join(rows)}</ul></div>'

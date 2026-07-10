@@ -204,6 +204,18 @@ class ChecklistTest(unittest.TestCase):
         html = render_ctx(checklist, b)
         self.assertNotIn("<script", html)
 
+    def test_render_includes_per_item_change_request_button(self):
+        # M12: a ❓ next to each item, reusing the generic cr-box/cr-ta id
+        # convention with a composite 'block-item' key (blocks/base.py's
+        # item_change_request_html, shared with any future item-bearing
+        # block) -- this is what lets the human ask/clarify a specific
+        # ambiguous step instead of only the whole block.
+        html = render_ctx(checklist, self._board())
+        self.assertIn("crToggleItem('cl','c1')", html)
+        self.assertIn('id="cr-box-cl-c1"', html)
+        self.assertIn('id="cr-ta-cl-c1"', html)
+        self.assertIn("crSendItem('cl','c1')", html)
+
 
 class QuestionTest(unittest.TestCase):
     def test_render_empty_prompt(self):

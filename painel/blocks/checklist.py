@@ -1,7 +1,7 @@
 """Human manual steps, checked off by the user."""
 from __future__ import annotations
 
-from .base import e, md_inline
+from .base import e, item_change_request_html, md_inline
 
 TYPE = "checklist"
 
@@ -15,10 +15,13 @@ def render(block: dict, ctx: dict) -> str:
         checked = "checked" if it.get("checked") else ""
         cls = "checked" if it.get("checked") else ""
         rows.append(
-            f'<li class="{cls}"><label>'
+            f'<li class="{cls}">'
+            f'<label>'
             f'<input type="checkbox" {checked} '
             f'onchange="check(\'{bid}\',\'{iid}\',this.checked)">'
-            f'<span>{md_inline(e(it.get("text", "")))}</span></label></li>'
+            f'<span>{md_inline(e(it.get("text", "")))}</span></label>'
+            f'{item_change_request_html(block.get("id", ""), it.get("id", ""))}'
+            f'</li>'
         )
     title = e(block.get("title", "A fazer (manual)"))
     return f'<div class="card"><h3>{title}</h3><ul class="checklist">{"".join(rows)}</ul></div>'
