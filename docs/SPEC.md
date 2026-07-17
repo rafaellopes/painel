@@ -1052,6 +1052,187 @@ something has gone wrong with §17.2.2.
 
 ---
 
+## 18. Navigation shell (M14) — full spec
+
+**Problem this solves:** M13 gave a project directory (`/`) and M6 gave a
+per-board page sidebar, but the two don't talk. Inside a board you lose the
+sense of *where you are in the whole hierarchy*, and pending work in **other**
+projects is invisible until you go back to `/`. This milestone unifies them
+into one persistent "app shell" that travels with the human.
+
+### 18.1 Breadcrumb
+
+Top of every **board** page (not the directory): a linked trail.
+
+```
+📋 Todos os projetos  ›  <Projeto>  ›  <Página>
+```
+
+- `Todos os projetos` → `/`. `<Projeto>` → `/<slug>` (the board's Home).
+  `<Página>` is the current page name (plain text, not a link — you're on it).
+- On a board's Home page the trail is just `Todos os projetos › <Projeto>`.
+- For a **single-board** `painel serve` (no service, no directory) there is no
+  `/` to link to — render the breadcrumb without the `Todos os projetos`
+  segment (just the project/page), or omit it entirely on Home. Never link to
+  a `/` route that single-board mode doesn't serve. Server knows its mode
+  (same signal M13 uses for base-path); pass it in.
+
+### 18.2 The sidebar becomes the app shell
+
+Today's per-board page nav (§11.2, appears only with ≥2 pages) is extended
+into a persistent left column present on **every** board page. Three stacked
+regions, top to bottom:
+
+1. **Project switcher.** The current project's title, and a control that
+   expands to the **full registered project list** (from the M13 registry),
+   each with its own pending badge (reuse the directory's per-project pending
+   count — the same number the directory card shows). This is the piece that
+   makes the count *travel*: inside Spit you still see `Livrete ③`,
+   `rececao ①` and can jump straight there. The current project is marked.
+   - Under the service: the list is every registered project.
+   - Under single-board `serve`: there is no registry/other projects, so the
+     switcher collapses to just the current project's name (no list) — the
+     shell must degrade cleanly to one board.
+   - Keep it compact: a collapsible list (details/summary or a small toggle),
+     not an always-expanded wall of every project. Default collapsed showing
+     just the current project + a total "N à tua espera noutros projetos"
+     line when any other project has pending; expand to see them itemized.
+2. **Page list** of the current project (exactly today's §11.2 nav: one entry
+   per page, per-page pending badge, current page marked). When the board has
+   0–1 pages this region is empty/absent, same as today — a single-page board
+   still shows the switcher + breadcrumb, just no page list.
+3. **"Where am I"** is emergent from the above: current project highlighted in
+   region 1, current page highlighted in region 2, breadcrumb up top.
+
+### 18.3 The two levels of pending, kept distinct
+
+- The **attention bar** (§6.2) stays exactly as is: it is *this board's*
+  pending, spanning *this board's* pages.
+- The **project switcher badges** cover *other* projects' pending.
+- Do not merge them. The human needs "what's waiting on me here" (act now)
+  separately from "what's waiting on me elsewhere" (go there next). Cramming
+  every project's every pending item into one bar on every page is noise;
+  the two-level split is the design.
+
+### 18.4 Rendering / where it lives
+
+- This is page-shell chrome, in `page.py` + `server.py`'s render path — NOT a
+  block type, NOT a `blocks/*.py` module (same rule as the directory and the
+  attention bar). The directory page (`directory.py`) does NOT get the
+  board-shell sidebar/breadcrumb — it *is* the top of the hierarchy.
+- Responsive: the sidebar collapses to a top dropdown/hamburger under the
+  existing narrow-viewport breakpoint (§11.2 already does this for the page
+  nav — extend it to the whole shell rather than inventing a second
+  breakpoint).
+- The current page's identity (slug, page name, project title, whether under
+  the service, the registry snapshot for badges) is all already computed
+  server-side per request — thread it into the shell render; do not add a
+  client fetch for it.
+
+### 18.5 Non-goals for M14
+
+No hierarchical/nested pages (the "chapters → subchapters" idea is a separate,
+larger milestone — pages stay flat here). No drag-to-reorder projects or
+pages. No collapsing/pinning state persisted server-side (if the switcher's
+expanded/collapsed state should survive reloads, use sessionStorage, same as
+open plan-threads/CR boxes — no new server state). No search/filter across
+projects (the directory is small; a filter is premature).
+
+---
+
+## 19. The `upload` block (M15) — full spec
+
+**Problem this solves:** `resources` (M11) lets the agent *show* files to the
+human. The inverse — the human *handing* files/images/a folder to the agent —
+had no affordance, so the human ends up asking "where do I put these?" in
+chat (observed live: a checklist item "Largar os 5 screenshots em
+docs/screenshots/" forced the human to know a path, and they asked). This
+block kills that question: the agent picks the destination; the human just
+drops. Supersedes the never-built `file_drop` stub from batch-1 (§5.2) — the
+name `upload` is clearer and the stub name is freely reassignable.
+
+### 19.1 Board shape
+
+```jsonc
+{ "id":"up1", "type":"upload", "prompt":"Arrasta aqui os 5 screenshots",
+  "accept":".png,.jpg,.jpeg,.gif,.webp",   // optional filter, informational + input hint
+  "dest_dir":"docs/screenshots",           // agent-chosen, RELATIVE to the project dir
+  "multiple":true,                          // default true
+  "directory":false,                        // if true, allow picking a whole folder
+  "files":[] }                              // agent reads this; server appends to it
+```
+
+- `dest_dir` is **relative to the board's project directory** and resolved
+  server-side against the registered board path — never an absolute path from
+  the client, never allowed to escape the project dir (see §19.4 safety).
+- `files` accumulates `{name, path, size}` for what's been uploaded, so the
+  block renders "answered"-style (the dropped files listed) and the agent has
+  the real paths.
+
+### 19.2 Upload flow
+
+- Render: a drag-and-drop zone + a normal file `<input>` (with `multiple` and,
+  if `directory:true`, `webkitdirectory`) as the click-to-pick fallback. The
+  drop zone must have a visible hover/drag-over state.
+- `POST /<slug>/upload` (under the service) / `POST /upload` (single-board) —
+  multipart form upload. Add this endpoint alongside the existing
+  `/event`/`/version` routing in **both** the service handler and the
+  single-board handler, deriving the target board the same way `/event` does.
+  The client posts to `basePath + '/upload'` (basePath already templated
+  server-side, §17.4).
+- Per file: sanitize the filename (see §19.4), write it under the resolved
+  `dest_dir` (creating the dir if needed), append `{name, path, size}` to the
+  block's `files`, and — like every other interaction — emit one JSONL event
+  to the board's `<board>.log` (§17.2.2): `{"event":"file_added",
+  "block":"up1", "name":"...", "path":"...", "size":1234}`. **Not silent** —
+  the whole point is the agent reacts.
+- On success the page reloads (the reload discipline / send-feedback of the
+  latest page.py applies; show the "a enviar" state during the upload — a big
+  file makes the wait real, so the spinner matters here more than anywhere).
+
+### 19.3 The global drop affordance (the zero-config shortcut)
+
+Beyond the agent-composed `upload` block, add a **persistent global "📎
+Enviar ficheiros para o agente"** affordance at the bottom of every board
+page, next to the existing global "➕ Pedir alteração" (§12.3). It accepts a
+drop/pick into a default `painel-uploads/` under the project dir and emits the
+same `file_added` event with `block: null` (mirroring the global change
+request's `block: null`). This is for when the human wants to hand over a file
+the agent didn't explicitly ask for — so there is **always** a drop target and
+the "where do I put this?" question can never arise. Same server endpoint;
+`dest_dir` defaults to `painel-uploads` when no block is named.
+
+### 19.4 Safety (local disk writes)
+
+1. **Path containment.** Resolve `dest_dir` against the project dir with
+   `os.path.realpath` and refuse (400 + no write) if the result escapes the
+   project directory — a board could carry `dest_dir:"../../etc"`; treat the
+   board as untrusted input here even though the agent writes it, because a
+   board can be shared. Same for the sanitized filename (no path separators
+   survive sanitization anyway, but assert containment after joining).
+2. **Filename sanitization.** Strip to `[A-Za-z0-9._-]`, collapse, forbid
+   leading dots that would hide the file or `..`; on collision, suffix
+   `-2`, `-3` rather than overwrite (never silently clobber an existing file).
+3. **Size limit.** Cap per-file (e.g. 25 MB, as the old stub said) and reject
+   over-limit with a clear message; don't buffer an unbounded body in memory.
+4. **Exposure.** Uploads write to disk on the machine running the service —
+   fine for local-first, but this is another reason the §17.6 fail-closed
+   binding + edge-auth-before-tunnel rule matters; note it, don't re-solve it.
+5. **Loopback only**, inheriting §17.6 — the endpoint adds no new network
+   surface beyond what `/event` already exposes.
+
+### 19.5 Non-goals for M15
+
+No cloud/remote storage (files land in the project dir, next to the work,
+like `board.json`). No preview/thumbnailing of uploaded files inside the
+`upload` block itself (if the agent wants to show them back, it composes a
+`resources` block, §15, which already does thumbnails — keep the two blocks
+single-purpose). No progress bar beyond the existing send-spinner (a
+determinate bar is nice-to-have, not required; a big upload showing the
+spinner is enough to not look dead). No resumable/chunked uploads.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -1069,6 +1250,8 @@ something has gone wrong with §17.2.2.
 | **M11** | `resources` block (§15): file/folder/url items, live per-item freshness text, thumbnails for images, generic `watched_paths()` hook + `/version` freshness extension so the page auto-refreshes when a linked file changes on disk | Passes §5.4 DoD; a board with a `resources` block auto-reloads when a watched file's mtime changes, without any board.json edit; missing paths render a visible warning, never crash; `watched_paths()` being absent on every other block type causes zero behavior change (backward compatible) |
 | **M12** | Per-item change requests (§16): ❓ next to each `checklist` item, shared `item_change_request_html()` helper, `item` field on `change_requests` entries | `change_requests` entries carry `item` (None when absent, backward compatible); resolved item text shown in "Pedidos em aberto"; still excluded from the attention bar; open/closed box state persists across reloads via the existing generic mechanism, no new client-side persistence code |
 | **M13** | The unified service (§17): one process serving every registered project, `~/.painel/projects.json` registry, `/`+`/<slug>`+`/<slug>/<page>` URL hierarchy, directory replaces the process-listing hub, CLI reshaped around the service | **The agent contract is untouched**: events still land in each board's own `<board>.log`, `board.json` still lives in the project dir, `tail -F <board>.log` still works per project (pinned by test); `painel open` in a fresh dir still Just Works end to end; a board with no process of its own still appears in the directory; foreign service on 8765 fails with a clear message instead of wandering ports; non-loopback bind refused without the explicit ack flag; BroadcastChannel keys on slug (two different boards must never self-close each other) |
+| **M14** | Navigation shell (§18): breadcrumb on every board page, persistent sidebar app-shell with a collapsible project switcher whose per-project pending badges travel across pages, current project+page highlighted | Breadcrumb links resolve (`/`, `/<slug>`, current page as text); the project switcher lists every registered project with correct pending badges matching the directory; single-board `serve` degrades cleanly (no `/` link, switcher shows only the current project); attention bar (this board) and switcher badges (other projects) stay distinct; page-shell chrome only, no block module, directory page unaffected; responsive collapse reuses the existing breakpoint |
+| **M15** | The `upload` block (§19): agent-composed drag/drop/pick zone writing to an agent-chosen `dest_dir` relative to the project, `POST /<slug>/upload`, `file_added` event, plus a global "📎 enviar ficheiros" affordance (`block:null` → `painel-uploads/`) | Dropping files writes them under the resolved dest and emits `file_added` to that board's own `<board>.log` (not silent); path containment refuses a `dest_dir`/filename escaping the project dir (400, no write); filenames sanitized + collision-suffixed never clobber; per-file size cap enforced; the global affordance needs no agent prompt so "where do I put this?" can't arise; loopback-only, no new network surface beyond `/event` |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
