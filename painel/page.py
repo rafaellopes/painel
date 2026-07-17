@@ -224,15 +224,43 @@ body.has-nav {{ max-width:1040px; }}
 .pages-sidebar .nav-item.active {{ background:var(--accent); color:var(--accent-ink); font-weight:600; }}
 .pages-dropdown {{ display:none; }}
 .pages-dropdown select {{ margin-top:0; }}
+/* --- Navigation shell (M14, docs/SPEC.md §18) -- a breadcrumb on top and a
+   persistent left app-shell (project switcher + page list) on every BOARD
+   page. Reuses the §11.2 .page-shell/.page-main flex layout and the SAME
+   max-width:600px breakpoint below, never a second one. The directory
+   (host-app chrome) never gets any of this. --- */
+.breadcrumb {{ font-size:.8rem; color:var(--muted); margin-bottom:.9rem; }}
+.breadcrumb a {{ color:var(--muted); text-decoration:none; }}
+.breadcrumb a:hover {{ color:var(--accent); text-decoration:underline; }}
+.breadcrumb .crumb-current {{ color:var(--text); font-weight:600; }}
+.breadcrumb .crumb-sep {{ opacity:.5; margin:0 .15rem; }}
+.app-shell {{ flex:none; width:200px; display:flex; flex-direction:column; gap:1rem;
+  position:sticky; top:1rem; align-self:flex-start; }}
+.switcher {{ display:flex; flex-direction:column; gap:.2rem; }}
+.switcher-current {{ font-weight:600; font-size:.9rem; padding:.3rem .1rem;
+  border-bottom:1px solid var(--border); }}
+.switcher details > summary {{ cursor:pointer; font-size:.78rem; color:var(--muted);
+  list-style:none; padding:.35rem .1rem; }}
+.switcher details > summary::-webkit-details-marker {{ display:none; }}
+.switcher details > summary::before {{ content:"▸ "; }}
+.switcher details[open] > summary::before {{ content:"▾ "; }}
+.switcher details[open] > summary {{ color:var(--text); }}
+.switcher-list {{ display:flex; flex-direction:column; gap:.1rem; margin-top:.2rem; }}
+.switcher-item {{ display:block; padding:.35rem .5rem; border-radius:8px; color:var(--text);
+  text-decoration:none; font-size:.85rem; }}
+.switcher-item:hover {{ background:var(--border); }}
+.switcher-item.current {{ background:var(--accent); color:var(--accent-ink); font-weight:600; }}
 @media (max-width:600px) {{
   .page-shell {{ flex-direction:column; gap:0; }}
   .pages-nav {{ width:100%; }}
   .pages-sidebar {{ display:none; }}
   .pages-dropdown {{ display:block; margin-bottom:1rem; }}
+  .app-shell {{ width:100%; position:static; margin-bottom:1rem; }}
 }}
 </style></head><body{nav_class}>
 <div id="dup-notice">👉 já tens este pAInel aberto — a fechar este separador</div>
 {attention}
+{breadcrumb}
 <header id="page-header">
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
@@ -380,6 +408,19 @@ for (const key of _openCrBoxes()) {{
   const box = document.getElementById('cr-box-' + key);
   if (box) box.style.display = 'block';
 }}
+
+// --- Navigation shell (M14, docs/SPEC.md §18) -------------------------------
+// The project switcher's expanded/collapsed state survives reloads via
+// sessionStorage -- no new SERVER state (§18.5), same discipline as the open
+// plan-threads / CR boxes above.
+(function() {{
+  const det = document.getElementById('switcher-others');
+  if (!det) return;
+  if (sessionStorage.getItem('switcherOpen') === '1') det.open = true;
+  det.addEventListener('toggle', function() {{
+    sessionStorage.setItem('switcherOpen', det.open ? '1' : '0');
+  }});
+}})();
 {block_js}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic

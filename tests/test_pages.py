@@ -34,19 +34,29 @@ def _multi_page_board():
 
 
 class BackwardCompatTest(unittest.TestCase):
-    """CRITICAL: boards with zero 'page' blocks render with NO nav UI at all."""
+    """M6's original contract was "a board with zero 'page' blocks renders with
+    NO nav UI at all". M14 (docs/SPEC.md §18.2) deliberately supersedes that:
+    the app-shell (breadcrumb + project switcher) is now on EVERY board page,
+    and a 0-1 page board simply has no PAGE-LIST region inside it. So the
+    surviving guarantee here is narrower and precise: the *§11.2 page-list nav*
+    (pages-sidebar / pages-dropdown / nav-item / <nav>) is what stays absent
+    for a pageless board -- not the whole shell."""
 
-    def test_pageless_board_has_no_nav_markup(self):
+    def test_pageless_board_has_no_page_list_nav(self):
         html = srv.render(_single_page_board())
         # Check the rendered BODY (not the static CSS ruleset, which always
-        # defines .pages-nav etc. -- it's just unused when no nav renders).
+        # defines .pages-nav etc. -- it's just unused when no page list renders).
         body = html.split("</style>", 1)[1]
-        for marker in ("pages-nav", "pages-sidebar", "pages-dropdown", "page-shell", "page-main", "nav-item", "has-nav", "<nav"):
+        for marker in ("pages-nav", "pages-sidebar", "pages-dropdown", "nav-item", "<nav"):
             self.assertNotIn(marker, body)
 
-    def test_pageless_board_body_tag_unchanged(self):
-        html = srv.render(_single_page_board())
-        self.assertIn("<body>", html)
+    def test_pageless_board_still_gets_the_app_shell(self):
+        """§18.2: a single-page board still shows the switcher + breadcrumb,
+        just no page list."""
+        body = srv.render(_single_page_board()).split("</style>", 1)[1]
+        self.assertIn("app-shell", body)
+        self.assertIn("switcher", body)
+        self.assertIn("breadcrumb", body)
 
     def test_pages_helper_returns_only_home(self):
         self.assertEqual(srv._pages(_single_page_board()), [None])

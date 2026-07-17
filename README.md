@@ -118,6 +118,14 @@ Each project's URL comes from a **slug** derived once from its `meta.project`
 (or its directory name) — `Livrete` → `/livrete`, `rececao.pt` → `/rececao-pt`.
 It's generated once and stored, so retitling a board never breaks your bookmark.
 
+Every board page carries a **breadcrumb** (`Todos os projetos › <projeto> ›
+<página>`) and a persistent **project switcher** in the sidebar: it lists every
+registered project with its own pending count, so work waiting on you *in other
+projects* is visible without going back to the directory — the count travels
+with you. Your board's own pending items stay in the attention bar up top; the
+switcher badges are strictly for the *other* projects. (Under a single-board
+`painel serve` there's no directory, so the switcher just shows the one board.)
+
 > `version` and `event` are reserved page names: a page called either is
 > unreachable at `/<slug>/version` / `/<slug>/event`. Known limitation.
 

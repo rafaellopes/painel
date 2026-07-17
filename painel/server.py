@@ -304,6 +304,91 @@ def _nav_html(board: dict, active_page, base: str = "") -> str:
 
 
 # --------------------------------------------------------------------------- #
+# Navigation shell (M14, docs/SPEC.md §18)                                    #
+# --------------------------------------------------------------------------- #
+def _breadcrumb_html(board: dict, active_page, base_path: str, service_mode: bool) -> str:
+    """The linked trail atop every board page (§18.1):
+
+        📋 Todos os projetos › <Projeto> › <Página>
+
+    On a board's Home the trail stops at <Projeto> (no page segment). Under the
+    unified service `Todos os projetos` links to `/` (the directory) and
+    <Projeto> links to the board's Home (`/<slug>`); the current segment is
+    always plain text -- you're on it.
+
+    In single-board `painel serve` there is no directory and no `/` route to
+    link to (§18.1): the `Todos os projetos` segment is omitted entirely and
+    the project segment is plain text, so the breadcrumb never points at a
+    route this mode doesn't serve. The server knows its mode (same signal M13
+    threads for the base path), so this is decided server-side, never in JS."""
+    board_title = board.get("title", "pAInel")
+    sep = '<span class="crumb-sep">›</span>'
+    parts = []
+    if service_mode:
+        parts.append('<a href="/">📋 Todos os projetos</a>')
+        if active_page is None:
+            parts.append(f'<span class="crumb-current">{e(board_title)}</span>')
+        else:
+            parts.append(f'<a href="{e(base_path or "/")}">{e(board_title)}</a>')
+            parts.append(f'<span class="crumb-current">{e(active_page)}</span>')
+    else:
+        # Single-board: no `/` directory link at all; segments are plain text.
+        parts.append(f'<span class="crumb-current">{e(board_title)}</span>')
+        if active_page is not None:
+            parts.append(f'<span class="crumb-current">{e(active_page)}</span>')
+    return f'<div class="breadcrumb">{f" {sep} ".join(parts)}</div>'
+
+
+def _switcher_html(board: dict, slug, entries) -> str:
+    """Region 1 of the app shell (§18.2): the project switcher.
+
+    Under the unified service (`entries` is the registry snapshot) it shows the
+    current project plus a collapsible list of every registered project, each
+    with its own pending badge -- the exact same per-project count the
+    directory card shows, computed by the shared `directory._needs_user_count`
+    so the two can never drift. The current project is marked; the collapsed
+    summary calls out "N à tua espera noutros projetos" whenever any OTHER
+    project has pending, which is what makes that count travel across pages.
+
+    Under single-board `painel serve` there is no registry (`entries is None`),
+    so it degrades cleanly to just the current project's name -- no list, no
+    other projects, no crash (§18.2)."""
+    board_title = board.get("title", "pAInel")
+    if entries is None:
+        return (
+            '<div class="switcher">'
+            f'<div class="switcher-current">📋 {e(board_title)}</div>'
+            '</div>'
+        )
+    others_pending = 0
+    items = []
+    for entry in entries:
+        is_current = entry["slug"] == slug
+        b = directory._load_board_safe(entry["path"])
+        count = directory._needs_user_count(b) if b else 0
+        if not is_current:
+            others_pending += count
+        cls = "switcher-item current" if is_current else "switcher-item"
+        items.append(
+            f'<a class="{cls}" href="/{e(entry["slug"])}">'
+            f'{e(entry["title"])}{_badge(count)}</a>'
+        )
+    if others_pending > 0:
+        summary = f"{others_pending} à tua espera noutros projetos"
+    else:
+        summary = "Mudar de projeto"
+    return (
+        '<div class="switcher">'
+        f'<div class="switcher-current">📋 {e(board_title)}</div>'
+        '<details id="switcher-others">'
+        f'<summary>{e(summary)}</summary>'
+        f'<div class="switcher-list">{"".join(items)}</div>'
+        '</details>'
+        '</div>'
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Whose-turn signal (M5, docs/SPEC.md §10)                                    #
 # --------------------------------------------------------------------------- #
 def _agent_status(board: dict) -> str:
@@ -377,19 +462,28 @@ def _change_request_box_html(block_id) -> str:
     )
 
 
-def render(board: dict, active_page=None, base_path: str = "", slug: str | None = None) -> str:
+def render(board: dict, active_page=None, base_path: str = "", slug: str | None = None,
+           entries: list | None = None) -> str:
     """Render one board page.
 
-    `base_path`/`slug` are M13's only additions (docs/SPEC.md §17.4) and both
-    default to single-board mode, so every pre-M13 caller renders exactly what
-    it rendered before:
+    `base_path`/`slug` are M13's additions (docs/SPEC.md §17.4) and both default
+    to single-board mode, so every pre-M13 caller renders exactly what it
+    rendered before:
 
     - `base_path`: '' when the board is the server root (`painel serve`), or
       '/<slug>' when it's mounted under the unified service. Every link and
       every JS endpoint hangs off it.
     - `slug`: the board's BroadcastChannel identity under the service. None
       keeps M10's port-derived channel name (§14.1), which is still correct
-      when one process serves exactly one board."""
+      when one process serves exactly one board.
+
+    `entries` is M14's addition (docs/SPEC.md §18): the registry snapshot the
+    project switcher itemizes, passed only by the unified service. None means
+    single-board mode -- the shell degrades to just the current project's name,
+    and the breadcrumb drops the `Todos os projetos` / `/` directory segment
+    (there is no directory to link to). It IS the mode signal for the shell,
+    the same way `slug`/`base_path` are for the channel and endpoints."""
+    service_mode = entries is not None
     all_blocks = board.get("blocks", [])
     pages = _pages(board)
     if active_page not in pages:
@@ -454,18 +548,22 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     agent_status, has_resolved = wt["agent_status"], wt["has_resolved"]
     title_text = _title_text(board_title, pending_count, agent_status)
     chip_text = _status_chip(pending_count, agent_status, has_resolved)
-    nav = _nav_html(board, active_page, base_path)
-    # Backward compat (§11.1): pageless boards get zero nav-related markup --
-    # no wrapper divs, no body class -- byte-identical to the pre-M6 shell.
-    page_shell_open = '<div class="page-shell">' if nav else ""
-    page_shell_close = "</div>\n" if nav else ""
-    page_main_open = '<div class="page-main">\n' if nav else ""
-    page_main_close = "\n</div>" if nav else ""
+    # M14 (§18.2): the app-shell -- project switcher (region 1) + the §11.2
+    # page list (region 2, still empty for a 0-1 page board) -- is present on
+    # EVERY board page now, not only when >=2 pages exist. So the .page-shell/
+    # .page-main flex layout (reused from M6) and the wide body always apply to
+    # a board page; the directory (host-app chrome) renders its own nav-less
+    # shell straight from page.py and is untouched by any of this.
+    page_list = _nav_html(board, active_page, base_path)  # "" when < 2 pages
+    switcher = _switcher_html(board, slug, entries)
+    breadcrumb = _breadcrumb_html(board, active_page, base_path, service_mode)
+    nav = f'<aside class="app-shell">{switcher}{page_list}</aside>'
     return _PAGE.format(
         title=e(title_text), metaline=metaline, attention=attention,
-        nav=nav, nav_class=" class=\"has-nav\"" if nav else "",
-        page_shell_open=page_shell_open, page_shell_close=page_shell_close,
-        page_main_open=page_main_open, page_main_close=page_main_close,
+        breadcrumb=breadcrumb,
+        nav=nav, nav_class=" class=\"has-nav\"",
+        page_shell_open='<div class="page-shell">', page_shell_close="</div>\n",
+        page_main_open='<div class="page-main">\n', page_main_close="\n</div>",
         blocks=blocks, block_js=_block_js(),
         base_path_js=_js_string(base_path),
         # None -> M10's original client-side, port-derived channel name, byte
@@ -622,10 +720,12 @@ class _Routes:
     def _send_html(self, html: str, code: int = 200) -> None:
         self._send(code, html.encode("utf-8"), "text/html; charset=utf-8")
 
-    def _send_board_page(self, board_path, active_page, base_path="", slug=None) -> None:
+    def _send_board_page(self, board_path, active_page, base_path="", slug=None,
+                         entries=None) -> None:
         with _lock:
             board = load_board(board_path)
-        self._send_html(render(board, active_page, base_path=base_path, slug=slug))
+        self._send_html(render(board, active_page, base_path=base_path, slug=slug,
+                               entries=entries))
 
     def _send_version(self, board_path: str) -> None:
         self._send(200, json.dumps(_version_payload(board_path)).encode(), "application/json")
@@ -763,12 +863,17 @@ class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
             self._send_version(entry["path"])
         elif rest == "event":
             self._send(404, b"not found", "text/plain")  # POST-only, same as pre-M13's /event
-        elif rest:
-            self._send_board_page(entry["path"], rest, base_path, entry["slug"])
+            return
+        # M14 (§18.2): the project switcher needs the full registry snapshot,
+        # re-read per request (no caching, exactly like the directory) so
+        # another project's pending count travels here and is current.
+        snapshot = registry.entries()
+        if rest:
+            self._send_board_page(entry["path"], rest, base_path, entry["slug"], snapshot)
         else:
             # ?page= still accepted on a board's Home for old bookmarks (§17.4).
             page = parse_qs(parsed.query).get("page", [None])[0]
-            self._send_board_page(entry["path"], page, base_path, entry["slug"])
+            self._send_board_page(entry["path"], page, base_path, entry["slug"], snapshot)
 
     def do_POST(self):
         parsed = urlparse(self.path)

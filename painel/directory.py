@@ -89,6 +89,9 @@ def _shell(title: str, cards: str) -> str:
     their own slug (§17.4)."""
     return _PAGE.format(
         title=e(title), metaline="", attention="",
+        # M14 (§18): the directory IS the top of the hierarchy -- it gets no
+        # board-shell breadcrumb and no project switcher (§18.4).
+        breadcrumb="",
         nav="", nav_class="",
         page_shell_open="", page_shell_close="",
         page_main_open="", page_main_close="",
