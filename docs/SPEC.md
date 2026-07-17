@@ -394,12 +394,17 @@ building M9.
 
 ---
 
-## 7. CLI (unchanged surface, document only)
+## 7. CLI
 
-`painel open [board] [--port N]` idempotent (pidfile `<board>.pid`,
-log `<board>.log`) · `stop` · `status` · `restart-all` (§6.6) · `serve`
-(foreground) · `init` · `demo`. Default board `.painel-board.json`. Auto
-port from 8765.
+**Superseded by §17.5 as of M13** — the CLI is now shaped around the single
+unified service rather than one process per board. `painel serve <board>`
+survives unchanged for the single-board/foreground case. Read §17.5 for the
+current surface; this section is kept as the historical pre-M13 shape:
+
+> `painel open [board] [--port N]` idempotent (pidfile `<board>.pid`,
+> log `<board>.log`) · `stop` · `status` · `restart-all` (§6.6) · `serve`
+> (foreground) · `init` · `demo`. Default board `.painel-board.json`. Auto
+> port from 8765.
 
 ---
 
@@ -879,6 +884,174 @@ render-time helper a module calls from inside its own `render()`, not a
 
 ---
 
+## 17. The unified service (M13) — full spec
+
+**The biggest architectural change since M1.** Replaces "one server process
+per board, each on its own port" with **one service serving every registered
+project**, addressed by a real URL hierarchy.
+
+### 17.1 Why (the problem with today's model)
+
+One-server-per-board was never a design decision — it's what existed before
+the hub, and M9's hub was bolted on top to *list live processes*. The
+consequences, all observed live on the author's machine:
+
+- **Boards you can't see.** 7 boards existed on disk; only 2 had a process
+  running, so the hub listed 2. The directory should show your projects,
+  not your processes.
+- **Ports as addresses.** `localhost:8771/Preparação` is not a URL anyone
+  bookmarks or recognizes, and the number changes.
+- **Port collisions.** 8765 (the hub's fixed port) was already taken by an
+  unrelated app on the author's machine (§13's `_is_our_hub` exists purely
+  to survive this).
+- **N processes for N projects**, plus `restart-all` machinery to herd them.
+
+Centralizing fixes all four. Crucially it is a *simplification*: the
+per-port process registry (§6.6) becomes a plain project list.
+
+### 17.2 What must NOT change (the load-bearing contracts)
+
+These are why pAInel works at all. M13 preserves every one of them:
+
+1. **`board.json` stays in the project directory.** It is not moved into a
+   central store. It lives next to the work, in the project's git/Drive, and
+   an agent working in that directory finds it with no configuration. The
+   service reads boards *at their registered paths*.
+2. **The agent's event channel is unchanged.** Today `_spawn` redirects the
+   per-board server's stdout into `<board>.log`, and the agent tails that
+   file. The unified service must **write each event directly to that
+   board's own `<board>.log`** (append + flush per line). Same file, same
+   JSONL, same `tail -F <board>.log | grep '^{'` — the skill and every
+   integration doc keep working untouched. Do NOT merge all events into one
+   shared stream: per-project agents must not have to filter other projects'
+   events out. (The service may *also* echo to its own stdout for
+   debugging; the per-board file is the contract.)
+3. **Zero-config still.** `painel open` in any directory keeps Just Working:
+   it registers the project, ensures the service is up, opens the browser.
+4. **Loopback-only by default** (see §17.6).
+
+### 17.3 The project registry
+
+Replaces §6.6's per-port process registry.
+
+```jsonc
+// ~/.painel/projects.json
+{
+  "livrete":   { "path": "/Users/.../Livrete/.painel-board.json", "title": "Livrete" },
+  "rececao-pt":{ "path": "/Users/.../rececao.pt/.painel-board.json", "title": "rececao.pt" }
+}
+```
+
+- **Slug** derives from `meta.project` (falling back to the board's parent
+  directory name): lowercase, spaces/dots/underscores → `-`, strip anything
+  outside `[a-z0-9-]`, collapse repeats. On collision append `-2`, `-3`…
+  **The slug is generated once and then stored** — never recomputed on read,
+  so a board retitling can't silently change its URL and break bookmarks.
+- Reserved slugs (never assignable): anything that would shadow a
+  service-level route. In practice, keep a small denylist and reject/suffix
+  a collision rather than producing an unreachable project.
+- A registry entry whose `path` no longer exists renders in the directory as
+  a visibly missing project (same spirit as `resources`' "⚠ não
+  encontrado", §15.2) — **not** silently dropped, since a moved project
+  should be diagnosable, not invisible.
+
+The single service's own process is tracked separately in
+`~/.painel/service.json` (`{"pid": …, "port": …}`), so `painel open` knows
+where to point the browser and `restart-all` knows what to restart.
+
+### 17.4 URL scheme
+
+| Route | Serves |
+|---|---|
+| `/` | **The directory** — every registered project as a card: title, pending badge, `agent_status` chip (reuse §13's existing card rendering, now fed by the registry instead of live processes) |
+| `/<slug>` | that board's Home page |
+| `/<slug>/<page>` | a specific page (§11) |
+| `/<slug>/version` | that board's freshness payload (§10.2's `{v, pending, agent_status, has_resolved}`, plus §15.2's `watched_paths` mtimes) |
+| `/<slug>/event` | POST — events for that board |
+
+- `version` and `event` are **reserved page names**, exactly as `/version`
+  and `/event` already are today — a page named either is unreachable.
+  Document as a known limitation; do not add an `/api/` prefix for it (more
+  churn than the risk warrants).
+- `?page=` on `/<slug>` stays accepted for any old bookmarked link (§11.2
+  already does this).
+- Unknown slug → a clear 404 page listing what *is* registered (not a bare
+  404; the human mistyped or the project was removed).
+- `page.py`'s client JS currently fetches `/version` and posts `/event` at
+  the root. It must derive a **base path** from the current location
+  (`/<slug>`) and use `basePath + '/version'` / `basePath + '/event'`.
+  Derive it client-side from `location.pathname`'s first segment rather than
+  templating it server-side, matching M10's precedent of deriving the
+  BroadcastChannel name from `location.port` instead of adding server-side
+  plumbing. **The channel name must now key on the slug, not the port** —
+  every board shares one port, so `painel-<port>` would make two *different*
+  boards' tabs think they're duplicates of each other and close one. Use
+  `painel-<slug>`.
+
+### 17.5 CLI
+
+| Command | Behavior |
+|---|---|
+| `painel service [--port 8765]` | The unified service, foreground/blocking. |
+| `painel open [dir] [--port N]` | Register `dir`'s board (if new), ensure the service is running (idempotent, same `_ensure_*` pattern as §13.2), open the browser at `/<slug>`. Still creates a starter board if none exists. |
+| `painel add [dir]` | Register without opening — for bulk-adding existing projects. |
+| `painel remove <slug>` | Unregister (never deletes the board file). |
+| `painel status` | Is the service up, on what port, how many projects. |
+| `painel stop` | Stop the service. |
+| `painel restart-all` | Restart the service. **Keep this name** — it is in the author's muscle memory and documented workflow (run after every upgrade); it just has far less to do now. |
+| `painel hub` | Alias for `service`, kept so existing habits/scripts don't break. |
+| `painel serve <board> [--port N]` | **Unchanged.** Single board, foreground, no registry. Still the right tool for tests, for a vendored single-file use, and it keeps every pre-M13 test meaningful. |
+| `painel init` / `demo` / `install-skill` | Unchanged. |
+
+Port handling: 8765 default. If occupied by a **foreign** service (reuse
+§13's `_is_our_*` signature check), **fail with a clear message suggesting
+`--port`** — do not auto-wander to another port. The port is now *the
+address*; silently moving it defeats the "one bookmark forever" purpose.
+The chosen port goes in `~/.painel/service.json`.
+
+### 17.6 Exposure safety — fail closed
+
+**This is the part that must not be got wrong.** Boards routinely accumulate
+secrets: the author's own Livrete board contains plaintext passwords for
+three test accounts in a `form` block, today, on disk. Anything that makes
+boards reachable makes those reachable.
+
+1. **Bind 127.0.0.1 by default** — unchanged from every prior milestone.
+2. **Non-loopback `--host` requires an explicit acknowledgement flag**
+   (`--i-know-this-is-exposed` or similar unmistakable name). Refuse to
+   start otherwise, with a message that says *why* (boards contain
+   credentials). A footgun that can be triggered by a typo is a defect.
+3. **Document the tunnel case loudly**, because binding rules cannot save
+   anyone from it: a tunnel (cloudflared et al.) runs *on the same machine*
+   and connects to loopback, so it exposes the service to the internet while
+   pAInel still binds 127.0.0.1 and believes it is private. The docs must
+   state plainly: **put edge authentication in front of it (Cloudflare
+   Access or equivalent) before pointing any tunnel at pAInel.**
+4. **pAInel implements no authentication itself.** Out of scope, on purpose:
+   homegrown auth is where projects like this get holed, and edge auth is
+   both stronger and free. Say so in the docs rather than leaving it as an
+   apparent omission.
+
+### 17.7 Migration
+
+- Pre-M13 `~/.painel/instances/*.json` entries are ignored and may be
+  cleaned up on first run of the new service.
+- No automatic filesystem scan for boards (guessing what the human wants
+  registered is worse than asking) — `painel add`/`painel open` per project.
+  A one-line note in the README shows how to bulk-add with a shell loop.
+- Old `localhost:<port>/Página` URLs break. Accepted and intended: replacing
+  them is the entire point of the milestone.
+
+### 17.8 Non-goals for M13
+
+No auth (§17.6.4). No remote/central board storage (§17.2.1). No multi-user
+(one service = one human's projects; multi-user is a Cloud concern, see
+docs/STRATEGY.md, not this). No agent-side changes of any kind — if this
+milestone touches `.claude/skills/painel/SKILL.md` beyond URLs in examples,
+something has gone wrong with §17.2.2.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -895,6 +1068,7 @@ render-time helper a module calls from inside its own `render()`, not a
 | **M10** | Tab hygiene + chat-pointer convention (§14): BroadcastChannel duplicate-tab self-close, skill rule that chat replies point at the board instead of restating it | Opening the same board twice in two tabs results in one tab closing itself with a visible notice, the other pulsing; skill doc updated with the one-line-plus-link convention |
 | **M11** | `resources` block (§15): file/folder/url items, live per-item freshness text, thumbnails for images, generic `watched_paths()` hook + `/version` freshness extension so the page auto-refreshes when a linked file changes on disk | Passes §5.4 DoD; a board with a `resources` block auto-reloads when a watched file's mtime changes, without any board.json edit; missing paths render a visible warning, never crash; `watched_paths()` being absent on every other block type causes zero behavior change (backward compatible) |
 | **M12** | Per-item change requests (§16): ❓ next to each `checklist` item, shared `item_change_request_html()` helper, `item` field on `change_requests` entries | `change_requests` entries carry `item` (None when absent, backward compatible); resolved item text shown in "Pedidos em aberto"; still excluded from the attention bar; open/closed box state persists across reloads via the existing generic mechanism, no new client-side persistence code |
+| **M13** | The unified service (§17): one process serving every registered project, `~/.painel/projects.json` registry, `/`+`/<slug>`+`/<slug>/<page>` URL hierarchy, directory replaces the process-listing hub, CLI reshaped around the service | **The agent contract is untouched**: events still land in each board's own `<board>.log`, `board.json` still lives in the project dir, `tail -F <board>.log` still works per project (pinned by test); `painel open` in a fresh dir still Just Works end to end; a board with no process of its own still appears in the directory; foreign service on 8765 fails with a clear message instead of wandering ports; non-loopback bind refused without the explicit ack flag; BroadcastChannel keys on slug (two different boards must never self-close each other) |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
