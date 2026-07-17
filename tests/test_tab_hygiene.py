@@ -71,12 +71,25 @@ class PulseReuseTest(unittest.TestCase):
         occurrences = re.findall(r"@keyframes\s+pulse\b", html)
         self.assertEqual(len(occurrences), 1, "expected exactly one @keyframes pulse rule")
 
-    def test_no_second_near_duplicate_keyframes_animation(self):
+    def test_no_second_near_duplicate_pulse_animation(self):
         html = srv.render(_simple_board())
-        # Every @keyframes block in the page must be named "pulse" -- i.e.
-        # there is no second, differently-named pulse-like animation.
+        # The point of this guard (M10) is that the reply-dot / dup-pulse
+        # effect must REUSE `pulse`, not spawn a second pulse-like animation.
+        # Genuinely different effects with their own purpose are fine -- the
+        # `spin` ("a enviar" spinner) and `shake` (failed-send) animations
+        # added for action feedback are not pulses. So: allow other named
+        # keyframes, but forbid a second box-shadow "pulse" clone.
         all_keyframes = re.findall(r"@keyframes\s+([A-Za-z0-9_-]+)", html)
-        self.assertEqual(all_keyframes, ["pulse"])
+        self.assertEqual(all_keyframes.count("pulse"), 1)
+        self.assertEqual(len(all_keyframes), len(set(all_keyframes)),
+                         "each @keyframes name should be defined exactly once")
+        # No differently-named animation should be another box-shadow pulse.
+        for name in set(all_keyframes) - {"pulse"}:
+            body = re.search(r"@keyframes\s+" + re.escape(name) + r"\s*\{\{?(.*?)\}\}?\s*(?=@keyframes|\Z)",
+                             html, re.DOTALL)
+            block = body.group(1) if body else ""
+            self.assertNotIn("box-shadow:0 0 0", block,
+                             f"@keyframes {name} looks like a duplicate of pulse")
 
     def test_dup_pulse_class_uses_the_shared_pulse_animation(self):
         html = srv.render(_simple_board())

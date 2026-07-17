@@ -154,6 +154,20 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
   background:var(--blocked); margin-left:.25rem; vertical-align:top; }}
 @keyframes pulse {{ 0%,100% {{ box-shadow:0 0 0 0 rgba(125,211,252,.5); }}
   50% {{ box-shadow:0 0 0 5px rgba(125,211,252,0); }} }}
+/* --- Action feedback: "a enviar" spinner + failure state (page.py send()) ---
+   Immediate confirmation that a click was received and is in flight, so a
+   slow or failed round-trip never looks like a dead button. Works on every
+   action button generically (small icon buttons and the wider text ones). */
+button.sending {{ position:relative; color:transparent !important; pointer-events:none; }}
+button.sending::after {{ content:''; position:absolute; inset:0; margin:auto;
+  width:11px; height:11px; border:2px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%;
+  animation:spin .6s linear infinite; }}
+@keyframes spin {{ to {{ transform:rotate(360deg); }} }}
+button.send-error {{ color:var(--blocked) !important; border-color:var(--blocked) !important;
+  animation:shake .3s ease-in-out; }}
+@keyframes shake {{ 0%,100% {{ transform:translateX(0); }}
+  25% {{ transform:translateX(-2px); }} 75% {{ transform:translateX(2px); }} }}
 /* --- Tab hygiene (M10, docs/SPEC.md §14.1) -- duplicate-tab self-close ---
    The surviving/original tab reuses the exact same `pulse` keyframes above
    (not a second, near-duplicate animation) applied to the header, so a
@@ -233,13 +247,45 @@ body.has-nav {{ max-width:1040px; }}
 // '/<slug>' under the unified service (-> /<slug>/event, /<slug>/version).
 // Templated server-side: only the server knows which mode it's in.
 const basePath = {base_path_js};
+
+// The button the human just pressed, captured in the CAPTURE phase so it's
+// already set by the time the inline onclick handler runs send() -- this is
+// what lets one central send() give every action button (play/skip/answer/
+// approve/...) its "a enviar" spinner without touching a single call site.
+let _lastActionBtn = null;
+document.addEventListener('pointerdown', function (e) {{
+  _lastActionBtn = e.target.closest('button');
+}}, true);
+
+// send() now does three things the old fire-and-forget version didn't:
+//  1. shows an immediate "a enviar" spinner on the pressed button, so a slow
+//     round-trip no longer looks like a dead click;
+//  2. distinguishes success from failure -- the old catch(e){{}} swallowed
+//     every error AND still resolved, so reloadSoon reloaded to the SAME
+//     state, making a failed POST indistinguishable from "nothing happened"
+//     (the exact confusion this fixes);
+//  3. on failure, leaves a visible error state and returns false so the
+//     caller's reloadSoon is skipped -- the human sees it did NOT go through
+//     instead of a silent reload.
 async function send(payload) {{
+  const btn = _lastActionBtn;
+  if (btn) {{ btn.classList.remove('send-error'); btn.classList.add('sending'); btn.disabled = true; }}
   try {{
-    await fetch(basePath + '/event', {{method:'POST', headers:{{'Content-Type':'application/json'}},
-      body: JSON.stringify(payload)}});
-  }} catch (e) {{}}
+    const r = await fetch(basePath + '/event', {{method:'POST',
+      headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(payload)}});
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return true;   // success -> caller's reloadSoon replaces the whole page
+  }} catch (e) {{
+    if (btn) {{
+      btn.classList.remove('sending'); btn.disabled = false;
+      btn.classList.add('send-error');
+      btn.title = 'Não foi possível enviar — tenta outra vez';
+      setTimeout(() => btn.classList.remove('send-error'), 2500);
+    }}
+    return false;  // failure -> no reload; the error state stays visible
+  }}
 }}
-function reloadSoon() {{ knownVersion = null; setTimeout(() => location.reload(), 250); }}
+function reloadSoon(ok) {{ if (ok === false) return; knownVersion = null; setTimeout(() => location.reload(), 250); }}
 
 // --- Tab hygiene (M10, docs/SPEC.md §14.1) ----------------------------------
 // Duplicate-tab self-close via BroadcastChannel. The channel name identifies

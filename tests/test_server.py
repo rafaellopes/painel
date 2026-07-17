@@ -60,6 +60,25 @@ class UnknownBlockRenderTest(unittest.TestCase):
         self.assertIn("totally_unknown", html)
 
 
+class ActionFeedbackTest(unittest.TestCase):
+    """Clicking an action button must give immediate feedback and surface a
+    failed send instead of silently reloading to the same state (page.py's
+    send()/reloadSoon())."""
+
+    def test_send_shows_sending_state_and_surfaces_failure(self):
+        html = srv.render({"blocks": []})
+        # captures the pressed button before the inline onclick runs
+        self.assertIn("pointerdown", html)
+        self.assertIn("_lastActionBtn", html)
+        # immediate spinner + failure state
+        self.assertIn("classList.add('sending')", html)
+        self.assertIn("send-error", html)
+        self.assertIn("button.sending::after", html)  # the CSS spinner
+        # failure returns false so reloadSoon is skipped (no silent reload)
+        self.assertIn("if (ok === false) return", html)
+        self.assertIn("if (!r.ok) throw", html)
+
+
 class NeedsUserWrapperTest(unittest.TestCase):
     """A block waiting on the human must be visually distinct from plain
     info cards (markdown/note/log), generically -- via the wrapper div's
