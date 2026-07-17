@@ -14,6 +14,7 @@ import os
 import socket
 import tempfile
 import threading
+import unicodedata
 import unittest
 import urllib.error
 import urllib.request
@@ -245,6 +246,48 @@ class RegistryTest(_FakeHomeMixin, unittest.TestCase):
         path = self._project("proj", project="Proj")
         self.assertEqual(registry.register(path), "proj")
         self.assertEqual(registry.register(path), "proj")
+        self.assertEqual(len(registry.load_projects()), 1)
+
+    def test_same_path_in_nfc_and_nfd_is_one_project(self):
+        """Real bug, caught during the M13 migration on a real project.
+        macOS returns NFD from the filesystem ("Finanças" as c + U+0327)
+        while the same path typed in a shell is NFC (ç as U+00E7) -- they
+        print identically. `painel add "<NFC path>"` then `painel open` from
+        inside the directory (cwd -> NFD) registered the board twice and
+        minted a spurious "financas-2". Nearly every real board here lives
+        under "Meu Drive/Finanças/"."""
+        path = self._project("Finanças", project="Finanças")
+        nfc = unicodedata.normalize("NFC", path)
+        nfd = unicodedata.normalize("NFD", path)
+        self.assertNotEqual(nfc, nfd)  # genuinely different strings
+        slug_a = registry.register(nfc)
+        slug_b = registry.register(nfd)
+        self.assertEqual(slug_a, slug_b)
+        self.assertEqual(len(registry.load_projects()), 1)
+
+    def test_registry_stores_the_path_verbatim_not_normalized(self):
+        """Normalization is for *comparison* only. On Linux, NFC and NFD
+        filenames are genuinely different files -- rewriting the stored path
+        to a normalized form could point the service at a path that doesn't
+        exist. We compare normalized, we store (and open) what we were
+        given."""
+        path = self._project("Finanças", project="Finanças")
+        nfd = unicodedata.normalize("NFD", path)
+        slug = registry.register(nfd)
+        stored = registry.load_projects()[slug]["path"]
+        self.assertTrue(os.path.exists(stored))
+        self.assertEqual(
+            unicodedata.normalize("NFC", os.path.realpath(stored)),
+            unicodedata.normalize("NFC", os.path.realpath(path)),
+        )
+
+    def test_path_key_folds_symlinks(self):
+        path = self._project("real-dir", project="Proj")
+        link_dir = os.path.join(self._tmp.name, "link-dir")
+        os.symlink(os.path.dirname(path), link_dir)
+        via_link = os.path.join(link_dir, os.path.basename(path))
+        self.assertEqual(registry.path_key(path), registry.path_key(via_link))
+        self.assertEqual(registry.register(path), registry.register(via_link))
         self.assertEqual(len(registry.load_projects()), 1)
 
     def test_collision_gets_a_numeric_suffix(self):

@@ -73,6 +73,32 @@ def slugify(text) -> str:
     return s or "projeto"
 
 
+def path_key(board_path: str) -> str:
+    """Identity of a board path, for registry *comparison* only -- never for
+    opening the file. The stored path stays exactly as it was registered, so
+    we always open the bytes the filesystem gave us.
+
+    Two different strings routinely name the same board:
+
+    - **Unicode normalization.** macOS returns NFD from the filesystem
+      ("Finanças" as c + U+0327) while the same path typed in a shell or
+      written in source is NFC (ç as U+00E7). They print identically. Caught
+      during the M13 migration on a real project: `painel add "<NFC path>"`
+      followed by `painel open` from inside that directory (cwd -> NFD)
+      registered the same board twice and minted a spurious "-2" slug. Nearly
+      every one of the author's boards lives under "Meu Drive/Finanças/", so
+      this would have misfired constantly.
+    - **Symlinks.** /tmp vs /private/tmp on macOS, or any symlinked project
+      directory.
+
+    Comparing normalized while storing verbatim is also what keeps this safe
+    on Linux, where NFC and NFD filenames are genuinely *different files*:
+    the worst case there is refusing to register both, never opening the
+    wrong one.
+    """
+    return unicodedata.normalize("NFC", os.path.realpath(os.path.abspath(board_path)))
+
+
 def _load_board_safe(path: str) -> dict | None:
     try:
         with open(path, "r", encoding="utf-8") as fh:
@@ -139,11 +165,12 @@ def register(board_path: str) -> str:
     display `title` is refreshed, since that's cosmetic and never addresses
     anything."""
     path = os.path.abspath(board_path)
+    key = path_key(path)
     projects = load_projects()
     board = _load_board_safe(path)
     title = _display_title(path, board)
     for slug, entry in projects.items():
-        if os.path.abspath(str(entry.get("path", ""))) == path:
+        if path_key(str(entry.get("path", ""))) == key:
             entry["title"] = title
             save_projects(projects)
             return slug
