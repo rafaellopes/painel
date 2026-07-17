@@ -225,6 +225,8 @@ the module. Never reuse another block's event names.
 | `form` | multi-field input | `prompt`, `fields[{id,label,kind: text\|number\|date\|email\|select\|textarea,options?,value}]`, `submitted` | submit |
 | `log` | timeline/decisions | `title`, `entries[{ts,text}]` | — |
 | `chat` | free-form conversation | `title`, `messages[{from: user\|agent,text}]` | chat_message |
+| `resources` | live docs/mockups/links (read-only) | `title`, `items[{label,kind: file\|folder\|url,path?,url?}]` | — |
+| `upload` | human hands files to the agent | `prompt`, `accept`, `dest_dir`, `multiple`, `directory`, `files[{name,path,size}]` | file_added |
 
 ### 5.2 Batch 1 — implement in M2 (in this order)
 
@@ -240,16 +242,9 @@ Render: label + live JS countdown (days/h/m). Past deadline → red, label
 "em atraso". `needs_user`: pending if not `done` (label: the block label).
 Event `countdown_done {}` when user clicks "Feito".
 
-**`file_drop`** — hand a file to the agent.
-```jsonc
-{ "id":"f1","type":"file_drop","prompt":"Anexa o extrato de junho (PDF)",
-  "accept":".pdf,.csv","dest_dir":"./painel-uploads","files":[] }
-```
-Render: drag&drop zone + file input. Upload via `POST /upload?block=<id>`
-(multipart; **add this endpoint in server.py as part of this block's work**,
-max 25 MB, filename sanitized to `[A-Za-z0-9._-]`, saved under `dest_dir`,
-path appended to `files[]`). Event `file_added {name, path, size}`.
-`needs_user`: pending while `files` empty. Answered-style once ≥1 file.
+**`file_drop`** — see §19 (M15, `upload`), full spec, supersedes this
+never-built stub (like `resources` superseded `links`; the name `upload` is
+clearer and `file_drop` is freely reassignable).
 
 **`rating`** — quick calibrated feedback.
 ```jsonc

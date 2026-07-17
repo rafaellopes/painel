@@ -98,6 +98,28 @@ class _RunningServiceMixin(_FakeHomeMixin):
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read().decode()
 
+    def _post_upload(self, port, path, files, boundary="pAInelBOUNDARY123"):
+        """POST a hand-built multipart body; files = [(field, filename, bytes)]."""
+        b = boundary.encode()
+        body = b""
+        for field, filename, content in files:
+            body += b"--" + b + b"\r\n"
+            body += (f'Content-Disposition: form-data; name="{field}"; '
+                     f'filename="{filename}"').encode() + b"\r\n"
+            body += b"Content-Type: application/octet-stream\r\n\r\n"
+            body += content + b"\r\n"
+        body += b"--" + b + b"--\r\n"
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}{path}", data=body,
+            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
 
 # --------------------------------------------------------------------------- #
 # §17.2.2 -- THE contract                                                      #
@@ -207,6 +229,91 @@ class PerBoardLogContractTest(_RunningServiceMixin, unittest.TestCase):
             sorted(os.listdir(painel_home)), ["projects.json"],
             "the registry stores a pointer to the board, never a copy of it",
         )
+
+
+# --------------------------------------------------------------------------- #
+# §19 -- the upload block endpoint, under the unified service                  #
+# --------------------------------------------------------------------------- #
+class UploadServiceTest(_RunningServiceMixin, unittest.TestCase):
+    """M15 (docs/SPEC.md §19.2): /<slug>/upload writes files under the block's
+    dest_dir and emits a NON-silent file_added event into THAT board's own
+    <board>.log -- the same per-board-log contract as /event (§17.2.2)."""
+
+    def test_upload_writes_file_and_emits_file_added_to_its_own_log(self):
+        a = self._project("proj-a", blocks=[
+            {"id": "up1", "type": "upload", "prompt": "?", "dest_dir": "docs/shots", "files": []}])
+        slug = registry.register(a)
+        port = self._start_service()
+
+        status, _ = self._post_upload(port, f"/{slug}/upload?block=up1",
+                                      [("file", "shot.png", b"PNGDATA")])
+        self.assertEqual(status, 200)
+
+        project_dir = os.path.dirname(a)
+        dest = os.path.join(project_dir, "docs", "shots", "shot.png")
+        self.assertTrue(os.path.exists(dest))
+
+        # files[] updated on the board in place (§19.1).
+        files = srv.load_board(a)["blocks"][0]["files"]
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["name"], "shot.png")
+        self.assertEqual(files[0]["path"], dest)
+        self.assertEqual(files[0]["size"], 7)
+
+        # file_added landed in THIS board's own log, and is NOT silent (§19.2).
+        with open(a + ".log", encoding="utf-8") as fh:
+            lines = [json.loads(line) for line in fh if line.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0], {"event": "file_added", "block": "up1",
+                                    "name": "shot.png", "path": dest, "size": 7})
+
+    def test_global_upload_block_null_lands_in_painel_uploads(self):
+        a = self._project("proj-a", blocks=[])
+        slug = registry.register(a)
+        port = self._start_service()
+
+        status, _ = self._post_upload(port, f"/{slug}/upload",
+                                      [("file", "hand.txt", b"hi")])
+        self.assertEqual(status, 200)
+        dest = os.path.join(os.path.dirname(a), "painel-uploads", "hand.txt")
+        self.assertTrue(os.path.exists(dest))
+        with open(a + ".log", encoding="utf-8") as fh:
+            lines = [json.loads(line) for line in fh if line.strip()]
+        self.assertEqual(len(lines), 1)
+        self.assertIsNone(lines[0]["block"])  # block:null, mirroring global CR
+
+    def test_upload_to_board_a_never_touches_board_b_log(self):
+        """Per-board isolation (mirrors PerBoardLogContractTest): an upload to A
+        writes A's log and A's disk only; B sees nothing, not even a file."""
+        a = self._project("proj-a", blocks=[
+            {"id": "up1", "type": "upload", "dest_dir": "up", "files": []}])
+        b = self._project("proj-b", blocks=[
+            {"id": "up1", "type": "upload", "dest_dir": "up", "files": []}])
+        slug_a, slug_b = registry.register(a), registry.register(b)
+        port = self._start_service()
+
+        self._post_upload(port, f"/{slug_a}/upload?block=up1", [("file", "a.png", b"A")])
+        with open(a + ".log", encoding="utf-8") as fh:
+            self.assertEqual(len([l for l in fh if l.strip()]), 1)
+        self.assertFalse(os.path.exists(b + ".log"))
+        self.assertEqual(srv.load_board(b)["blocks"][0]["files"], [])
+
+    def test_dest_dir_escape_is_refused_and_writes_nothing(self):
+        a = self._project("proj-a", blocks=[
+            {"id": "up1", "type": "upload", "dest_dir": "../../escape", "files": []}])
+        slug = registry.register(a)
+        port = self._start_service()
+        status, _ = self._post_upload(port, f"/{slug}/upload?block=up1",
+                                      [("file", "x.png", b"DATA")])
+        self.assertEqual(status, 400)
+        self.assertFalse(os.path.exists(a + ".log"))  # nothing emitted either
+        self.assertEqual(srv.load_board(a)["blocks"][0]["files"], [])
+
+    def test_get_on_upload_path_404s(self):
+        registry.register(self._project("proj", project="P", blocks=[]))
+        port = self._start_service()
+        status, _ = self._get(port, "/p/upload")
+        self.assertEqual(status, 404)
 
 
 # --------------------------------------------------------------------------- #

@@ -38,6 +38,24 @@ CR_GLOBAL_HTML = """<div class="cr-global">
   </div>
 </div>"""
 
+# The global 📎 drop affordance (M15, docs/SPEC.md §19.3), rendered at the
+# bottom of every BOARD page next to CR_GLOBAL_HTML. It names no block, so the
+# server defaults its destination to painel-uploads/ under the project dir --
+# there is ALWAYS a drop target, so "where do I put this?" can never arise. The
+# uploadDropGlobal/uploadPickGlobal handlers live in blocks/upload.py's JS
+# (always emitted into the page), so this works even on a board with no
+# upload block of its own. The directory (host-app chrome) fills the
+# {upload_global} placeholder with "" -- it is not a board.
+UPLOAD_GLOBAL_HTML = """<div class="upload-global">
+  <div class="upload-zone" id="up-zone-global"
+       ondragover="uploadDragOver(event)" ondragleave="uploadDragLeave(event)"
+       ondrop="uploadDropGlobal(event)"
+       onclick="document.getElementById('up-input-global').click()">
+    <span class="upload-hint">&#128206; Enviar ficheiros para o agente</span>
+    <input type="file" id="up-input-global" multiple style="display:none" onchange="uploadPickGlobal(this)">
+  </div>
+</div>"""
+
 _PAGE = """<!doctype html>
 <html lang="pt"><head>
 <meta charset="utf-8">
@@ -199,6 +217,25 @@ footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.
 a.dir-card {{ display:block; text-decoration:none; color:inherit; }}
 a.dir-card:hover {{ border-color:var(--accent); }}
 .dir-missing {{ opacity:.7; border-style:dashed; }}
+/* --- upload block + global 📎 affordance (M15, docs/SPEC.md §19) -- a
+   drag-and-drop zone with a click-to-pick fallback. The drop zone has a
+   visible drag-over state and an in-flight "uploading" state (a big file
+   makes the wait real, §19.2), reusing the same spin keyframes as the action
+   send-spinner rather than a second animation. --- */
+.upload-zone {{ border:2px dashed var(--border); border-radius:12px; padding:1.1rem 1rem;
+  text-align:center; cursor:pointer; color:var(--muted); font-size:.9rem;
+  transition:border-color .15s, background .15s; }}
+.upload-zone:hover {{ border-color:var(--accent); color:var(--text); }}
+.upload-zone.dragover {{ border-color:var(--accent); background:rgba(125,211,252,.12);
+  color:var(--text); }}
+.upload-zone.uploading {{ position:relative; color:transparent; pointer-events:none; }}
+.upload-zone.uploading::after {{ content:''; position:absolute; inset:0; margin:auto;
+  width:16px; height:16px; border:2px solid var(--border);
+  border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; }}
+.upload-zone.upload-error {{ border-color:var(--blocked); color:var(--blocked);
+  animation:shake .3s ease-in-out; }}
+.upload-done {{ margin-top:.7rem; }}
+.upload-global {{ margin:1.5rem 0; max-width:520px; margin-inline:auto; }}
 /* --- resources block (M11, docs/SPEC.md §15) --- */
 ul.res-list li.res-item {{ display:flex; align-items:center; gap:.7rem;
   padding:.4rem 0; border-bottom:1px solid var(--border); }}
@@ -268,6 +305,7 @@ body.has-nav {{ max-width:1040px; }}
 </header>
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
 {cr_global}
+{upload_global}
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
 // Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md

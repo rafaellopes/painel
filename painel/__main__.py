@@ -125,6 +125,14 @@ def _demo_board() -> dict:
                 {"label": "Pasta de entregáveis (exemplo)", "kind": "folder", "path": _repo_root},
                 {"label": "Protótipo Figma (exemplo)", "kind": "url", "url": "https://figma.com/file/example"},
             ]},
+            {"id": "h7", "type": "heading", "text": "Dá-me ficheiros (arrasta e larga)"},
+            # files[] stays empty so nothing machine-specific (a real uploaded
+            # path/size) ever leaks into the committed golden (§ golden note).
+            {"id": "up1", "type": "upload",
+             "prompt": "Arrasta aqui os screenshots (.png, .jpg)",
+             "accept": ".png,.jpg,.jpeg,.gif,.webp",
+             "dest_dir": "docs/screenshots", "multiple": True, "directory": False,
+             "files": []},
         ],
         "change_requests": [
             {"id": "cr1", "block": "pl", "text": "adiciona uma fase de testes com utilizadores",

@@ -40,6 +40,8 @@ what interaction it hands back:
 | `choice` | A prompt with option buttons | The option you picked |
 | `approval` | A proposal with Approve / Reject | Your decision + comment |
 | `form` | Several labelled fields | The filled object |
+| `resources` | Live docs / mockups / links, always current | — (read-only) |
+| `upload` | A drag-and-drop zone the agent points at a folder it chose | The files you drop, written to disk + a `file_added` event |
 | `markdown` / `note` / `heading` / `log` | Formatted context | — (read-only) |
 
 The killer case: **the agent needs you to do something by hand** — log into a
@@ -181,6 +183,24 @@ free.
   **Put edge authentication in front of it — Cloudflare Access or equivalent —
   before pointing any tunnel at pAInel.** Without that, you have published every
   credential on every board to anyone with the URL.
+- **The `upload` block writes to disk.** When the human drops files into an
+  `upload` block (or the global "📎 Enviar ficheiros" affordance at the bottom
+  of every board), they're saved under the project directory — next to
+  `board.json`, never uploaded anywhere remote. Filenames are sanitized, capped
+  at 25 MB, and can never escape the project dir. This is one more reason the
+  loopback-by-default + edge-auth-before-tunnel rule above matters: an exposed
+  service is not only readable, it's now a place strangers can *write* files.
+
+### Handing files to the agent — the `upload` block
+
+The inverse of `resources`: instead of the agent showing you files, **you** drop
+files in and the agent picks up where they landed. The agent composes an
+`upload` block choosing the destination (`dest_dir`, relative to the project),
+so you never have to know or ask a path — you just drag and drop. Every board
+also has a persistent global **📎 Enviar ficheiros para o agente** drop zone at
+the bottom (files go to `painel-uploads/`), so there is always somewhere to hand
+over a file the agent didn't explicitly ask for. Each dropped file is written to
+disk and emits a `file_added` event the agent reacts to.
 
 ## Using it inside Claude Code
 

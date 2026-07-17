@@ -6,7 +6,7 @@ import unittest
 
 from painel.blocks import REGISTRY
 from painel.blocks import heading, markdown, note, tasks, plan, checklist
-from painel.blocks import question, choice, approval, form, log, chat, resources
+from painel.blocks import question, choice, approval, form, log, chat, resources, upload
 
 XSS = '"<script>alert(1)</script>'
 
@@ -16,6 +16,7 @@ class RegistryTest(unittest.TestCase):
         expected = {
             "heading", "markdown", "note", "tasks", "plan", "checklist",
             "question", "choice", "approval", "form", "log", "chat", "resources",
+            "upload",
         }
         self.assertEqual(expected, set(REGISTRY.keys()))
 
@@ -548,6 +549,82 @@ class ResourcesTest(unittest.TestCase):
             {"label": XSS, "kind": "url", "url": XSS},
         ]}
         html = render_ctx(resources, b)
+        self.assertNotIn("<script", html)
+
+
+class UploadTest(unittest.TestCase):
+    """M15 (docs/SPEC.md §19): the human hands files to the agent via an
+    agent-composed drop zone. The file_added event is applied server-side by
+    the /upload endpoint (see test_server.UploadEndpointTest), so the module's
+    apply() is a deliberate no-op and needs_user() is pending-while-empty."""
+
+    def _board(self, files=None):
+        return {"id": "up1", "type": "upload", "prompt": "Arrasta aqui os screenshots",
+                "accept": ".png,.jpg", "dest_dir": "docs/screenshots",
+                "multiple": True, "directory": False, "files": files or []}
+
+    def test_render_empty_shows_drop_zone_and_prompt(self):
+        html = render_ctx(upload, self._board())
+        self.assertIn("upload-zone", html)
+        self.assertIn("Arrasta aqui os screenshots", html)
+        self.assertIn('id="up-zone-up1"', html)
+        self.assertIn('type="file"', html)
+        self.assertIn("uploadDrop(event,'up1')", html)
+        self.assertIn('accept=".png,.jpg"', html)
+        # Empty -> not yet answered, no file listing.
+        self.assertNotIn("upload-done", html)
+        self.assertNotIn("answered", html)
+
+    def test_render_filled_lists_files_answered_style(self):
+        b = self._board(files=[
+            {"name": "shot-1.png", "path": "/proj/docs/screenshots/shot-1.png", "size": 2048},
+            {"name": "shot-2.png", "path": "/proj/docs/screenshots/shot-2.png", "size": 1024},
+        ])
+        html = render_ctx(upload, b)
+        self.assertIn("upload-done", html)
+        self.assertIn("answered", html)  # dimmed, outcome visible (§4.1)
+        self.assertIn("shot-1.png", html)
+        self.assertIn("shot-2.png", html)
+        self.assertIn("/proj/docs/screenshots/shot-1.png", html)
+
+    def test_directory_flag_adds_webkitdirectory(self):
+        b = self._board()
+        b["directory"] = True
+        html = render_ctx(upload, b)
+        self.assertIn("webkitdirectory", html)
+
+    def test_no_multiple_when_disabled(self):
+        b = self._board()
+        b["multiple"] = False
+        html = render_ctx(upload, b)
+        # no bare 'multiple' attribute on the input
+        self.assertNotIn("webkitdirectory", html)
+        self.assertNotIn(" multiple ", html.replace('type="file"', ""))
+
+    def test_apply_is_a_noop_returning_false(self):
+        # file_added is applied server-side, never through the block's apply().
+        b = self._board()
+        self.assertFalse(upload.apply(b, {"event": "file_added", "name": "x.png"}))
+        self.assertFalse(upload.apply(b, {"event": "whatever"}))
+
+    def test_needs_user_pending_when_empty_not_pending_once_filled(self):
+        b = self._board()
+        pending = upload.needs_user(b)
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0][0], "up1")  # (block_id, label)
+        b["files"] = [{"name": "a.png", "path": "/x/a.png", "size": 10}]
+        self.assertEqual(upload.needs_user(b), [])
+
+    def test_needs_user_label_falls_back_without_a_prompt(self):
+        b = {"id": "up1", "type": "upload", "files": []}
+        pending = upload.needs_user(b)
+        self.assertEqual(len(pending), 1)
+        self.assertTrue(pending[0][1])  # some non-empty label
+
+    def test_escaping(self):
+        b = {"id": XSS, "type": "upload", "prompt": XSS, "accept": XSS,
+             "files": [{"name": XSS, "path": XSS, "size": 1}]}
+        html = render_ctx(upload, b)
         self.assertNotIn("<script", html)
 
 

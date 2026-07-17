@@ -104,6 +104,7 @@ def _shell(title: str, cards: str) -> str:
         has_resolved="false",
         status_chip="",
         cr_global="",  # host-app chrome, not a board -- no change-request affordance
+        upload_global="",  # ...and no global upload affordance either (M15, §19.3)
     )
 
 

@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,7 +40,7 @@ from urllib.parse import urlparse, parse_qs, quote, unquote
 from . import directory, registry
 from .blocks import REGISTRY
 from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
-from .page import _PAGE, CR_GLOBAL_HTML
+from .page import _PAGE, CR_GLOBAL_HTML, UPLOAD_GLOBAL_HTML
 
 _lock = threading.Lock()
 
@@ -577,6 +578,7 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
         has_resolved="true" if has_resolved else "false",
         status_chip=e(chip_text),
         cr_global=CR_GLOBAL_HTML,
+        upload_global=UPLOAD_GLOBAL_HTML,
     )
 
 
@@ -695,6 +697,170 @@ def _version_payload(board_path: str) -> dict:
     return {"v": v, **_whose_turn(board, blocks_html, pending_count)}
 
 
+# --------------------------------------------------------------------------- #
+# Uploads (M15, docs/SPEC.md §19)                                              #
+# --------------------------------------------------------------------------- #
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024          # per-file cap (§19.4.3)
+# Hard ceiling on the whole request body, purely a memory guard so an
+# over-large POST is refused before rfile.read() buffers it (§19.4.3: "don't
+# buffer an unbounded body in memory"). Generous enough for a legit batch of
+# several near-cap files; the real per-file limit is enforced part by part.
+_MAX_REQUEST_BYTES = MAX_UPLOAD_BYTES * 5
+_FILENAME_STRIP_RE = re.compile(r"[^A-Za-z0-9._-]")
+DEFAULT_UPLOAD_DIR = "painel-uploads"        # global affordance target (§19.3)
+
+
+class UploadTooLarge(Exception):
+    """Raised by parse_multipart when a single file part exceeds the cap."""
+
+
+def _boundary_from_content_type(ctype: str) -> bytes | None:
+    for part in ctype.split(";"):
+        part = part.strip()
+        if part.lower().startswith("boundary="):
+            return part[len("boundary="):].strip().strip('"').encode("latin-1")
+    return None
+
+
+def _part_headers(head: bytes) -> dict:
+    out = {}
+    for line in head.split(b"\r\n"):
+        if b":" in line:
+            k, _, v = line.partition(b":")
+            out[k.decode("latin-1").strip().lower()] = v.decode("latin-1").strip()
+    return out
+
+
+def _disposition_filename(disposition: str) -> str | None:
+    """The filename from a Content-Disposition header, or None for a part that
+    isn't a file upload (a plain form field). May legitimately return '' for a
+    file part with an empty filename -- the caller sanitizes anyway."""
+    for token in disposition.split(";"):
+        token = token.strip()
+        if token.lower().startswith("filename="):
+            val = token[len("filename="):].strip()
+            if len(val) >= 2 and val[0] == '"' and val[-1] == '"':
+                val = val[1:-1]
+            return val
+    return None
+
+
+def parse_multipart(body: bytes, boundary: bytes,
+                    max_part: int = MAX_UPLOAD_BYTES) -> list:
+    """Parse a multipart/form-data body into [(filename, content_bytes), ...]
+    for its FILE parts only (parts carrying a Content-Disposition filename),
+    stdlib-only -- Python 3.13 removed cgi.FieldStorage, and pAInel takes no
+    dependencies (§0), so we split the body on the boundary ourselves (§19.4).
+
+    Raises UploadTooLarge the moment any single file part's content exceeds
+    `max_part`, so an over-cap file is rejected rather than written."""
+    files = []
+    delimiter = b"--" + boundary
+    for segment in body.split(delimiter):
+        # Skip the preamble ('' before the first boundary) and the closing
+        # delimiter ('--\r\n', which starts with '--' after the split).
+        if not segment or segment.startswith(b"--"):
+            continue
+        if segment.startswith(b"\r\n"):
+            segment = segment[2:]
+        head, sep, rest = segment.partition(b"\r\n\r\n")
+        if not sep:
+            continue
+        # The CRLF that precedes the next boundary belongs to the delimiter,
+        # not to the file's bytes.
+        content = rest[:-2] if rest.endswith(b"\r\n") else rest
+        filename = _disposition_filename(
+            _part_headers(head).get("content-disposition", ""))
+        if filename is None:
+            continue  # a non-file form field
+        if len(content) > max_part:
+            raise UploadTooLarge(filename)
+        files.append((filename, content))
+    return files
+
+
+def sanitize_filename(name: str) -> str:
+    """Strip a client-supplied filename to [A-Za-z0-9._-] with no path
+    separators and no leading dots (§19.4.2). basename() drops any directory
+    part first, so '../../etc/passwd' becomes 'passwd'; the regex then removes
+    everything outside the safe set, and lstrip('.') forbids leading dots that
+    would hide the file or form '..'. Never returns an empty string."""
+    name = os.path.basename(name or "").strip()
+    name = _FILENAME_STRIP_RE.sub("", name)
+    name = name.lstrip(".")
+    if not name:
+        return "ficheiro"
+    return name
+
+
+def _contain(project_dir: str, candidate: str) -> str | None:
+    """Realpath-resolve `candidate` and return it only if it stays inside
+    `project_dir`; None if it escapes (§19.4.1). Used both to resolve dest_dir
+    against an untrusted board and to re-assert containment after joining the
+    sanitized filename."""
+    root = os.path.realpath(project_dir)
+    resolved = os.path.realpath(candidate)
+    if resolved == root or resolved.startswith(root + os.sep):
+        return resolved
+    return None
+
+
+def _unique_dest(dest_dir: str, filename: str) -> str:
+    """A path under dest_dir that does not already exist: suffix '-2', '-3'…
+    before the extension rather than overwrite (§19.4.2)."""
+    base, ext = os.path.splitext(filename)
+    candidate = filename
+    n = 1
+    while os.path.exists(os.path.join(dest_dir, candidate)):
+        n += 1
+        candidate = f"{base}-{n}{ext}"
+    return os.path.join(dest_dir, candidate)
+
+
+def save_uploads(board_path: str, block_id, parsed: list) -> tuple:
+    """Write already-parsed (filename, content) pairs to disk under the target
+    block's dest_dir (or DEFAULT_UPLOAD_DIR for the global affordance, §19.3),
+    append {name,path,size} to a named block's `files`, persist the board, and
+    return (events, error). `error` is a message string when the destination
+    escapes the project dir (fail-closed, nothing written); otherwise None and
+    `events` is the list of file_added events to emit.
+
+    Mirrors the change_request endpoint's server-side handling: the board is
+    mutated and the event emitted here, never through a block's apply()."""
+    project_dir = os.path.dirname(os.path.abspath(board_path))
+    events = []
+    with _lock:
+        board = load_board(board_path)
+        block = _find(board, block_id) if block_id else None
+        dest_rel = (block.get("dest_dir") if block else None) or DEFAULT_UPLOAD_DIR
+        # Containment is checked with realpath (_contain), but the directory we
+        # actually create/write/store is the plain abspath join, so the path
+        # handed back to the agent matches the project's own path style rather
+        # than a symlink-resolved one (e.g. /var vs macOS's /private/var).
+        dest = os.path.normpath(os.path.join(project_dir, dest_rel))
+        if _contain(project_dir, dest) is None:
+            return [], f"destino fora do projeto: {dest_rel}"
+        os.makedirs(dest, exist_ok=True)
+        for filename, content in parsed:
+            safe = sanitize_filename(filename)
+            final = _unique_dest(dest, safe)
+            # Belt-and-suspenders: sanitize already removes every separator, so
+            # this can't fail, but §19.4.1 asks to re-assert after the join.
+            if _contain(project_dir, final) is None:
+                continue
+            with open(final, "wb") as fh:
+                fh.write(content)
+            rec = {"name": os.path.basename(final), "path": final, "size": len(content)}
+            if block is not None:
+                block.setdefault("files", []).append(rec)
+            events.append({
+                "event": "file_added", "block": block_id if block else None,
+                "name": rec["name"], "path": final, "size": rec["size"],
+            })
+        save_board(board_path, board)
+    return events, None
+
+
 class _Routes:
     """HTTP plumbing + the three things "serving a board" means, shared by the
     single-board handler and the unified service (M13).
@@ -747,6 +913,46 @@ class _Routes:
             emit_event(data, board_path if log_to_board else None)
         self._send(200, b'{"ok":true}', "application/json")
 
+    def _json_error(self, code: int, message: str) -> None:
+        self._send(code, json.dumps({"error": message}, ensure_ascii=False).encode(),
+                   "application/json")
+
+    def _handle_upload(self, board_path: str, block_id, log_to_board: bool) -> None:
+        """POST /upload (single-board) or /<slug>/upload (service), M15 §19.2.
+
+        Derives its target board exactly like /event does (the caller passes
+        the resolved board_path), parses the multipart body with the stdlib,
+        writes each file under the block's dest_dir (or painel-uploads/ for the
+        global affordance), and emits ONE non-silent file_added event per file
+        into that board's own <board>.log -- the same emit_event contract every
+        other interaction uses (§17.2.2)."""
+        ctype = self.headers.get("Content-Type", "")
+        boundary = _boundary_from_content_type(ctype)
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if boundary is None or length <= 0:
+            self._json_error(400, "esperava multipart/form-data com ficheiros")
+            return
+        # Memory guard (§19.4.3): refuse an over-large body before buffering it.
+        if length > _MAX_REQUEST_BYTES:
+            self._json_error(413, "envio demasiado grande")
+            return
+        body = self.rfile.read(length)
+        try:
+            parsed = parse_multipart(body, boundary)
+        except UploadTooLarge:
+            self._json_error(413, "ficheiro demasiado grande (máximo 25 MB por ficheiro)")
+            return
+        if not parsed:
+            self._json_error(400, "nenhum ficheiro no envio")
+            return
+        events, err = save_uploads(board_path, block_id, parsed)
+        if err is not None:
+            self._json_error(400, err)  # fail-closed: dest escaped the project dir
+            return
+        for ev in events:
+            emit_event(ev, board_path if log_to_board else None)
+        self._send(200, b'{"ok":true}', "application/json")
+
 
 # --------------------------------------------------------------------------- #
 # Single-board mode: `painel serve <board>` (unchanged, docs/SPEC.md §17.5)   #
@@ -771,7 +977,7 @@ class _Handler(_Routes, BaseHTTPRequestHandler):
             # change -- see docs/SPEC.md §11.2).
             qs = parse_qs(parsed.query)
             self._send_board_page(self.board_path, qs.get("page", [None])[0])
-        elif path not in ("/version", "/event"):
+        elif path not in ("/version", "/event", "/upload"):
             # Any other path segment is treated as a page name, e.g.
             # "/Estrat%C3%A9gia" -> page "Estratégia". render() already
             # falls back to Home for a name that isn't a real page (covers
@@ -780,16 +986,22 @@ class _Handler(_Routes, BaseHTTPRequestHandler):
         elif path == "/version":
             self._send_version(self.board_path)
         else:
+            # /event and /upload are POST-only, exactly as /event always was.
             self._send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if urlparse(self.path).path != "/event":
-            self._send(404, b"not found", "text/plain")
-            return
+        parsed = urlparse(self.path)
+        path = parsed.path
         # log_to_board=False: this process's stdout is the agent's channel in
         # single-board mode (the CLI has always redirected it into
         # <board>.log). Writing the file here too would double every line.
-        self._handle_event(self.board_path, log_to_board=False)
+        if path == "/event":
+            self._handle_event(self.board_path, log_to_board=False)
+        elif path == "/upload":
+            block_id = parse_qs(parsed.query).get("block", [None])[0]
+            self._handle_upload(self.board_path, block_id, log_to_board=False)
+        else:
+            self._send(404, b"not found", "text/plain")
 
 
 def serve(board_path: str, port: int = 8765, open_browser: bool = False) -> None:
@@ -861,7 +1073,7 @@ class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
         base_path = f"/{entry['slug']}"
         if rest == "version":
             self._send_version(entry["path"])
-        elif rest == "event":
+        elif rest in ("event", "upload"):
             self._send(404, b"not found", "text/plain")  # POST-only, same as pre-M13's /event
             return
         # M14 (§18.2): the project switcher needs the full registry snapshot,
@@ -878,12 +1090,17 @@ class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urlparse(self.path)
         entry, rest = self._resolve(parsed)
-        if entry is None or rest != "event":
+        if entry is None or rest not in ("event", "upload"):
             self._send(404, b"not found", "text/plain")
             return
-        # log_to_board=True: THE M13 contract (§17.2.2) -- this event goes to
-        # THIS board's own <board>.log and no other's. See emit_event().
-        self._handle_event(entry["path"], log_to_board=True)
+        # log_to_board=True: THE M13 contract (§17.2.2) -- events (and now
+        # file_added uploads) go to THIS board's own <board>.log and no
+        # other's. Same base-path/board resolution as /event. See emit_event().
+        if rest == "event":
+            self._handle_event(entry["path"], log_to_board=True)
+        else:
+            block_id = parse_qs(parsed.query).get("block", [None])[0]
+            self._handle_upload(entry["path"], block_id, log_to_board=True)
 
 
 def serve_service(port: int = 8765, host: str = "127.0.0.1") -> None:

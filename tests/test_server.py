@@ -644,5 +644,202 @@ class EscapingRegressionTest(unittest.TestCase):
         self.assertNotIn("<script", without_real_script_tag)
 
 
+def _multipart_body(files, boundary="pAInelBOUNDARY123"):
+    """Hand-build a multipart/form-data body (files = [(field, filename,
+    bytes), ...]) exactly as a browser would, so the parser can be tested with
+    no browser. Returns (body_bytes, content_type_header)."""
+    b = boundary.encode()
+    out = b""
+    for field, filename, content in files:
+        out += b"--" + b + b"\r\n"
+        out += (f'Content-Disposition: form-data; name="{field}"; '
+                f'filename="{filename}"').encode() + b"\r\n"
+        out += b"Content-Type: application/octet-stream\r\n\r\n"
+        out += content + b"\r\n"
+    out += b"--" + b + b"--\r\n"
+    return out, f"multipart/form-data; boundary={boundary}"
+
+
+class MultipartParserTest(unittest.TestCase):
+    """M15 (§19.4): stdlib-only multipart parsing (cgi.FieldStorage is gone in
+    3.13+) with a per-file size cap enforced while parsing."""
+
+    def test_single_file_parses_to_filename_and_bytes(self):
+        body, ctype = _multipart_body([("file", "a.png", b"\x89PNG-bytes")])
+        boundary = srv._boundary_from_content_type(ctype)
+        parsed = srv.parse_multipart(body, boundary)
+        self.assertEqual(parsed, [("a.png", b"\x89PNG-bytes")])
+
+    def test_multiple_files_parse_in_order(self):
+        body, ctype = _multipart_body([
+            ("file", "a.png", b"AAA"),
+            ("file", "b.jpg", b"BBBB"),
+            ("file", "c.gif", b"C"),
+        ])
+        boundary = srv._boundary_from_content_type(ctype)
+        parsed = srv.parse_multipart(body, boundary)
+        self.assertEqual(parsed, [("a.png", b"AAA"), ("b.jpg", b"BBBB"), ("c.gif", b"C")])
+
+    def test_non_file_form_fields_are_ignored(self):
+        # A plain field (no filename=) between two file parts must be skipped.
+        b = "BOUND".encode()
+        body = (b"--" + b + b"\r\n"
+                b'Content-Disposition: form-data; name="note"\r\n\r\n'
+                b"just a field\r\n"
+                b"--" + b + b"\r\n"
+                b'Content-Disposition: form-data; name="file"; filename="x.txt"\r\n\r\n'
+                b"real\r\n"
+                b"--" + b + b"--\r\n")
+        parsed = srv.parse_multipart(body, b)
+        self.assertEqual(parsed, [("x.txt", b"real")])
+
+    def test_binary_content_with_crlf_inside_survives(self):
+        payload = b"line1\r\nline2\r\n\x00\xff"
+        body, ctype = _multipart_body([("file", "bin.dat", payload)])
+        boundary = srv._boundary_from_content_type(ctype)
+        parsed = srv.parse_multipart(body, boundary)
+        self.assertEqual(parsed[0][1], payload)
+
+    def test_part_over_the_cap_is_rejected(self):
+        body, ctype = _multipart_body([("file", "big.bin", b"x" * 100)])
+        boundary = srv._boundary_from_content_type(ctype)
+        with self.assertRaises(srv.UploadTooLarge):
+            srv.parse_multipart(body, boundary, max_part=50)
+
+    def test_under_the_cap_is_accepted(self):
+        body, ctype = _multipart_body([("file", "ok.bin", b"x" * 50)])
+        boundary = srv._boundary_from_content_type(ctype)
+        parsed = srv.parse_multipart(body, boundary, max_part=50)
+        self.assertEqual(len(parsed), 1)
+
+
+class UploadSafetyUnitTest(unittest.TestCase):
+    """§19.4 safety helpers, tested directly."""
+
+    def test_sanitize_strips_separators_and_dangerous_names(self):
+        self.assertEqual(srv.sanitize_filename("../../etc/passwd"), "passwd")
+        self.assertEqual(srv.sanitize_filename("/abs/evil.png"), "evil.png")
+        self.assertEqual(srv.sanitize_filename("a b/c.txt"), "c.txt")
+        self.assertEqual(srv.sanitize_filename(".."), "ficheiro")
+        self.assertEqual(srv.sanitize_filename(".hidden"), "hidden")
+        self.assertEqual(srv.sanitize_filename(""), "ficheiro")
+        self.assertEqual(srv.sanitize_filename("good_name-2.png"), "good_name-2.png")
+
+    def test_contain_refuses_escape(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = os.path.join(d, "proj")
+            os.makedirs(root)
+            self.assertIsNotNone(srv._contain(root, os.path.join(root, "sub", "x")))
+            self.assertIsNone(srv._contain(root, os.path.join(root, "..", "..", "etc")))
+
+
+class UploadEndpointTest(unittest.TestCase):
+    """The single-board /upload endpoint (§19.2), driven over HTTP against a
+    real _Handler on a temp project. Log-to-board / per-board isolation is
+    covered against the unified service in tests.test_service."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.proj = os.path.join(self.tmp.name, "proj")
+        os.makedirs(self.proj)
+        self.board_path = os.path.join(self.proj, "board.json")
+        srv.save_board(self.board_path, {"title": "P", "meta": {}, "blocks": [
+            {"id": "up1", "type": "upload", "prompt": "?", "dest_dir": "docs/shots", "files": []},
+        ]})
+        srv._Handler.board_path = self.board_path
+        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv._Handler)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.thread.join)
+        self.addCleanup(self.httpd.shutdown)
+
+    def _post_upload(self, files, query="?block=up1", boundary="pAInelBOUNDARY123"):
+        body, ctype = _multipart_body(files, boundary)
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{self.port}/upload{query}",
+            data=body, headers={"Content-Type": ctype}, method="POST")
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read().decode()
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode()
+
+    def test_upload_to_a_block_writes_file_and_appends_files_entry(self):
+        status, _ = self._post_upload([("file", "shot.png", b"PNGDATA")])
+        self.assertEqual(status, 200)
+        dest = os.path.join(self.proj, "docs", "shots", "shot.png")
+        self.assertTrue(os.path.exists(dest))
+        with open(dest, "rb") as fh:
+            self.assertEqual(fh.read(), b"PNGDATA")
+        files = srv.load_board(self.board_path)["blocks"][0]["files"]
+        self.assertEqual(len(files), 1)
+        self.assertEqual(files[0]["name"], "shot.png")
+        self.assertEqual(files[0]["path"], dest)
+        self.assertEqual(files[0]["size"], len(b"PNGDATA"))
+
+    def test_multiple_files_all_land(self):
+        status, _ = self._post_upload([
+            ("file", "a.png", b"AA"), ("file", "b.png", b"BBB")])
+        self.assertEqual(status, 200)
+        d = os.path.join(self.proj, "docs", "shots")
+        self.assertEqual(sorted(os.listdir(d)), ["a.png", "b.png"])
+        self.assertEqual(len(srv.load_board(self.board_path)["blocks"][0]["files"]), 2)
+
+    def test_global_upload_with_no_block_lands_in_painel_uploads(self):
+        status, _ = self._post_upload([("file", "hand.txt", b"hi")], query="")
+        self.assertEqual(status, 200)
+        dest = os.path.join(self.proj, "painel-uploads", "hand.txt")
+        self.assertTrue(os.path.exists(dest))
+        # No block named -> nothing appended to any block's files[].
+        self.assertEqual(srv.load_board(self.board_path)["blocks"][0]["files"], [])
+
+    def test_dest_dir_escaping_the_project_is_refused_400_no_write(self):
+        board = srv.load_board(self.board_path)
+        board["blocks"][0]["dest_dir"] = "../../escape"
+        srv.save_board(self.board_path, board)
+        status, _ = self._post_upload([("file", "x.png", b"DATA")])
+        self.assertEqual(status, 400)
+        # Nothing written anywhere outside (or inside) -- fail closed.
+        escaped = os.path.join(self.tmp.name, "escape")
+        self.assertFalse(os.path.exists(escaped))
+        self.assertEqual(srv.load_board(self.board_path)["blocks"][0]["files"], [])
+
+    def test_filename_traversal_is_sanitized_and_cannot_escape(self):
+        status, _ = self._post_upload([("file", "../../etc/passwd", b"root:x")])
+        self.assertEqual(status, 200)
+        # Written as a plain 'passwd' INSIDE dest_dir, never outside it.
+        self.assertTrue(os.path.exists(os.path.join(self.proj, "docs", "shots", "passwd")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "etc", "passwd")))
+
+    def test_collision_suffixes_never_overwrites(self):
+        self._post_upload([("file", "dup.png", b"first")])
+        self._post_upload([("file", "dup.png", b"second")])
+        d = os.path.join(self.proj, "docs", "shots")
+        self.assertEqual(sorted(os.listdir(d)), ["dup-2.png", "dup.png"])
+        with open(os.path.join(d, "dup.png"), "rb") as fh:
+            self.assertEqual(fh.read(), b"first")  # original untouched
+        with open(os.path.join(d, "dup-2.png"), "rb") as fh:
+            self.assertEqual(fh.read(), b"second")
+
+    def test_oversize_file_is_rejected(self):
+        big = b"x" * (srv.MAX_UPLOAD_BYTES + 1)
+        status, body = self._post_upload([("file", "big.bin", big)])
+        self.assertEqual(status, 413)
+        self.assertIn("grande", body)
+        self.assertEqual(os.listdir(os.path.join(self.proj, "docs", "shots"))
+                         if os.path.exists(os.path.join(self.proj, "docs", "shots")) else [], [])
+
+    def test_get_on_upload_path_404s(self):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/upload") as r:
+                code = r.status
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+        self.assertEqual(code, 404)
+
+
 if __name__ == "__main__":
     unittest.main()

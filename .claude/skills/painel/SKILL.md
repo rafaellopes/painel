@@ -214,6 +214,7 @@ Block types:
 - `log` — `{ "type":"log", "title":"...", "entries":[{"ts":"HH:MM","text":"..."}] }`
 - `chat` — free-form conversation, a substitute for a separate terminal for day-to-day dialogue. `{ "type":"chat", "title":"Conversa", "messages":[{"from":"user","text":"..."},{"from":"agent","text":"..."}] }`. The human's replies arrive as a **non-silent** `chat_message` event (append `{"from":"user","text":value}` to `messages` and reply by appending your own `{"from":"agent","text":...}` before saving the board). Only compose one `chat` block per board (top-level). It never contributes to the attention bar — a message awaiting your reply is *your* turn, not the human's, so it's surfaced via `meta.agent_status` (the same 🟢/🟡/⚪ chip shown in the page header) rather than the yellow "à tua espera" bar.
 - `resources` — docs/mockups/reference links that stay current on their own, no re-describing needed as they change. Read-only, no events. `{ "type":"resources", "title":"...", "items":[{"label":"...","kind":"file","path":"/abs/path"},{"label":"...","kind":"folder","path":"/abs/path"},{"label":"...","kind":"url","url":"https://..."}] }`. `file`/`folder` items show a live "atualizado há Xm/h/d" freshness string (computed fresh on every request) and the whole page auto-refreshes whenever one of those paths changes on disk — you never need to touch board.json just because a linked file changed. A missing path shows a visible "⚠ ficheiro não encontrado" warning instead of disappearing. Use absolute paths only (this only makes sense when the human and you share a machine).
+- `upload` — the human hands **files** (images, a PDF, a whole folder) to you. The inverse of `resources`: `resources` shows files *to* the human, `upload` lets them drop files *for* you into a destination **you** choose. `{ "type":"upload", "prompt":"Arrasta aqui os screenshots", "accept":".png,.jpg", "dest_dir":"docs/screenshots", "multiple":true, "directory":false, "files":[] }`. `dest_dir` is **relative to the project directory** (where board.json lives) — you pick it, so the human never has to know or ask a path. On each drop the server writes the file (sanitized name, 25 MB cap, collision-suffixed, never escaping the project dir), appends `{name,path,size}` to `files[]`, and emits a **non-silent** `file_added {block,name,path,size}` event — react to it (read the real path from `files[]`, or show the files back with a `resources` block). Pending in the attention bar while `files` is empty (waiting on the human), resolved once ≥1 file lands. There is also a persistent global "📎 Enviar ficheiros para o agente" affordance at the bottom of every board (drops into `painel-uploads/`, emits `file_added` with `block:null`) — so even without an `upload` block, "where do I put this?" can never arise. **If you need a FILE from the human, that's an `upload` block, not a checklist item that names a path** (see "Checklist vs question/form" — an unclear "Largar os screenshots em docs/screenshots/" step forces the human to know a path and ask; an `upload` block with the `dest_dir` you chose just gives them a drop target).
 
 ## Multi-page boards
 
@@ -266,7 +267,12 @@ Same pattern for "Confirmar com o sócio: X ou Y?" (that's a `choice` or
 checklist item, ask: *if this gets ticked, do I have everything I need, or
 am I still missing a value?* If you're missing a value, it's a
 `question`/`choice`/`form` item — reserve `checklist` for steps whose only
-output is "did you do it".
+output is "did you do it". And if what you need back is **files** (images, a
+PDF, a folder), that's an `upload` block, **not** a checklist item that names
+a path: "Largar os 5 screenshots em docs/screenshots/" makes the human learn a
+path and drop blindly (and then ask "onde?"); an `upload` block with the
+`dest_dir` you chose just gives them a drop target and hands you the real
+paths via `file_added`.
 
 ## Checklist vs tasks/plan — who actually performs the step?
 
