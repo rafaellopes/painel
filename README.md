@@ -58,12 +58,14 @@ copy-pasting "done" into chat.
        └──────── interaction ◀────┴──────────────────────────┘
 ```
 
-- **Input:** a `board.json` — an ordered list of typed blocks.
-- **Output:** every interaction is written back into `board.json` **and** printed
-  as one JSON line on stdout, so the agent can react in real time.
+- **Input:** a `board.json` — an ordered list of typed blocks, living in your
+  project directory, next to the work.
+- **Output:** every interaction is written back into `board.json` **and**
+  appended as one JSON line to that board's own `<board>.log`, so the agent can
+  react in real time by tailing it.
 
-That's the whole protocol. Any agent that can write a JSON file and read stdout
-lines can use pAInel.
+That's the whole protocol. Any agent that can write a JSON file and read lines
+from another can use pAInel.
 
 ## Quick start
 
@@ -79,45 +81,98 @@ Then, in any project directory, **one command**:
 painel open
 ```
 
-That's it. First run creates `.painel-board.json` and opens the dashboard in
-your browser. Run it again anytime — it's idempotent: if a board is already
-running it just re-opens the tab instead of starting a second server. Useful
-companions:
+That's it. First run creates `.painel-board.json`, registers the project, starts
+the **service** if it isn't already up, and opens your board at
+`http://localhost:8765/<your-project>`. Run it again anytime — it's idempotent.
+Useful companions:
 
 ```bash
-painel status      # is it running? where?
-painel stop        # stop the server for this board
-painel demo        # see every block type in a showcase board
-painel restart-all # restart every running instance on this machine (after an upgrade)
+painel add /path/to/project   # register a project without opening it
+painel remove <slug>          # unregister (never deletes the board file)
+painel status                 # is the service up? where? how many projects?
+painel stop                   # stop the service
+painel demo                   # see every block type in a showcase board
+painel restart-all            # restart the service (run this after an upgrade)
 ```
 
 No need to remember ports or ask your agent to start it for you.
 
-### The hub — one fixed address for every board
+### One service, one address, every project
 
-`painel open` also starts (if not already running) a tiny **hub** on a fixed,
-well-known port: **http://localhost:8765/**. It lists every board currently
-running on your machine — title, project, pending count, and whether the
-agent is working/waiting/offline — as a clickable card. Bookmark that one
-address instead of tracking N different port numbers; it never needs a
-browser tab opened for it automatically, so it just sits there ready when
-you want it. `painel hub --port 8765` starts it manually if you ever need to.
+There is **one** pAInel process on your machine, on one fixed port, serving
+every project you've registered:
 
-Chrome and Firefox also resolve any `*.localhost` subdomain to your own
-machine with zero configuration (no `/etc/hosts` edit, no sudo), so if you
-want a vanity per-project bookmark you can use e.g.
-`http://myproject.localhost:8765/` — but note the **port**, not the hostname,
-is what actually selects the board; the subdomain is cosmetic only and
-pAInel doesn't inspect or route on it.
+| URL | What it is |
+|---|---|
+| `http://localhost:8765/` | **The directory** — every registered project as a card: title, pending count, and whether its agent is working/waiting/offline |
+| `http://localhost:8765/livrete` | that project's board |
+| `http://localhost:8765/livrete/Financeiro` | a specific page of it |
 
-Then point your agent at `board.json`. When someone interacts, the server prints
-a line like:
+Bookmark `http://localhost:8765/` once and you're done. The directory lists your
+**projects**, not your running processes — a project shows up whether or not an
+agent is currently working on it, which is the point. A project whose board file
+has moved or been deleted is shown as visibly missing rather than silently
+disappearing, so you can diagnose it (`painel remove <slug>` to drop it).
+
+Each project's URL comes from a **slug** derived once from its `meta.project`
+(or its directory name) — `Livrete` → `/livrete`, `rececao.pt` → `/rececao-pt`.
+It's generated once and stored, so retitling a board never breaks your bookmark.
+
+> `version` and `event` are reserved page names: a page called either is
+> unreachable at `/<slug>/version` / `/<slug>/event`. Known limitation.
+
+**Bulk-adding your existing projects** — pAInel deliberately never scans your
+filesystem guessing what you want registered, so add them explicitly:
+
+```bash
+for d in ~/projects/*/; do
+  [ -f "$d/.painel-board.json" ] && painel add "$d"
+done
+painel status   # confirm the count
+```
+
+Chrome and Firefox also resolve any `*.localhost` subdomain to your own machine
+with zero configuration (no `/etc/hosts` edit, no sudo), so
+`http://livrete.localhost:8765/livrete` works if you like vanity bookmarks — but
+the **path**, not the hostname, is what selects the board; the subdomain is
+cosmetic and pAInel doesn't route on it.
+
+Then point your agent at `board.json`. When someone interacts, that board's own
+`.painel-board.json.log` gets a line like:
 
 ```json
 {"event":"check","block":"cl","item":"c1","checked":true}
 {"event":"answer","block":"q1","value":"send it to ana@acme.com"}
 {"event":"approve","block":"ap","decision":"approved","comment":"go ahead"}
 ```
+
+Each project gets **only its own** events, so the agent working in that
+directory just tails that one file:
+
+```bash
+tail -n0 -F .painel-board.json.log | grep --line-buffered '^{'
+```
+
+### ⚠️ Security: pAInel has no authentication, on purpose
+
+**Read this before exposing pAInel anywhere.** Boards routinely accumulate
+secrets — test-account passwords in a `form` block, tokens, client data. pAInel
+implements **no authentication at all**, deliberately: homegrown auth is exactly
+where projects like this get holed, and edge authentication is both stronger and
+free.
+
+- **It binds `127.0.0.1` by default** and always has. Only you, on your own
+  machine, can reach it.
+- **A non-loopback `--host` is refused** unless you pass an explicit
+  `--i-know-this-is-exposed` acknowledgement. A footgun a typo can trigger is a
+  defect, not a feature.
+- **🚨 Tunnels bypass all of the above.** A tunnel (`cloudflared`, `ngrok`, `ssh
+  -R`, …) runs *on your machine* and connects *to loopback* — so it publishes
+  pAInel to the internet while pAInel still binds `127.0.0.1` and believes it is
+  private. The bind address cannot save you here; nothing in pAInel can.
+  **Put edge authentication in front of it — Cloudflare Access or equivalent —
+  before pointing any tunnel at pAInel.** Without that, you have published every
+  credential on every board to anyone with the URL.
 
 ## Using it inside Claude Code
 

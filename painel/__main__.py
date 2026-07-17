@@ -1,12 +1,18 @@
 """
 Command-line entry point for pAInel.
 
-Usage:
-    python -m painel open   [board.json]          # the one command people actually type
-    python -m painel stop   [board.json]
-    python -m painel status [board.json]
-    python -m painel serve  <board.json> [--port 8765] [--open]
-    python -m painel init   <board.json>          # write a starter board
+Shaped around ONE service serving every registered project (M13,
+docs/SPEC.md §17.5), not one process per board:
+
+    python -m painel open    [dir]                # the one command people actually type
+    python -m painel add     [dir]                # register without opening
+    python -m painel remove  <slug>               # unregister (never deletes the board)
+    python -m painel status                       # is the service up, where, how many projects
+    python -m painel stop                         # stop the service
+    python -m painel restart-all                  # restart the service (run after upgrading)
+    python -m painel service [--port 8765]        # the service, foreground
+    python -m painel serve   <board.json> [--port 8765] [--open]   # ONE board, foreground
+    python -m painel init    <board.json>         # write a starter board
     python -m painel demo                         # serve a showcase board
 """
 import argparse
@@ -21,10 +27,16 @@ import urllib.error
 import urllib.request
 import webbrowser
 
-from .server import serve, serve_hub, save_board, load_board
+from . import registry
+from .server import serve, serve_service, save_board, load_board
 
 DEFAULT_BOARD = ".painel-board.json"
-HUB_PORT = 8765
+# 8765 is the address now, not just a starting point to scan from: it goes in
+# every bookmark. If it's taken by a foreign service we fail loudly and
+# suggest --port -- we never wander to another port (§17.5).
+SERVICE_PORT = 8765
+LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "0:0:0:0:0:0:0:1", ""}
+EXPOSE_ACK_FLAG = "--i-know-this-is-exposed"
 
 STARTER = {
     "title": "pAInel",
@@ -38,6 +50,17 @@ STARTER = {
         ]},
     ],
 }
+
+
+def _starter(board_path: str) -> dict:
+    """STARTER, but with meta.project named after the board's OWN directory
+    rather than the shell's cwd. `painel open <dir>` (M13, §17.5) can create a
+    board somewhere other than where you're standing, and meta.project is what
+    the slug derives from (§17.3) -- naming it after the cwd would give the
+    project a URL borrowed from an unrelated directory."""
+    board = json.loads(json.dumps(STARTER))  # deep copy; STARTER is module-level
+    board["meta"]["project"] = os.path.basename(os.path.dirname(os.path.abspath(board_path)))
+    return board
 
 
 def _demo_board() -> dict:
@@ -110,22 +133,9 @@ def _demo_board() -> dict:
     }
 
 
-def _pidfile(board: str) -> str:
-    return board + ".pid"
-
-
 def _port_free(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         return s.connect_ex(("127.0.0.1", port)) != 0
-
-
-def _find_free_port(start: int = 8765, tries: int = 50) -> int:
-    port = start
-    for _ in range(tries):
-        if _port_free(port):
-            return port
-        port += 1
-    raise RuntimeError("nenhuma porta livre encontrada")
 
 
 def _pid_alive(pid: int) -> bool:
@@ -134,17 +144,6 @@ def _pid_alive(pid: int) -> bool:
     except OSError as exc:
         return exc.errno == errno.EPERM  # exists but owned by someone else
     return True
-
-
-def _read_pidfile(board: str) -> dict | None:
-    pf = _pidfile(board)
-    if not os.path.exists(pf):
-        return None
-    try:
-        with open(pf, "r", encoding="utf-8") as fh:
-            return json.load(fh)
-    except (json.JSONDecodeError, OSError):
-        return None
 
 
 def _default_agent_status_if_absent(board: str) -> None:
@@ -161,90 +160,86 @@ def _default_agent_status_if_absent(board: str) -> None:
         save_board(board, b)
 
 
-def _spawn(board: str, port: int) -> int:
-    """Launch a detached `painel serve` for `board` on `port`, log to
-    `<board>.log` (appended, so restart-all keeps history), pidfile written.
-    Returns the child pid. Shared by cmd_open and restart-all so both spawn
-    identically."""
-    log_path = board + ".log"
-    log_fh = open(log_path, "a", encoding="utf-8")
+def _resolve_board_arg(target: str) -> str:
+    """M13 reshaped `open`/`add` to take a DIRECTORY (§17.5), but the author's
+    fingers have typed `painel open` (and occasionally a board path) for
+    months. Accept both rather than punish the muscle memory: a directory
+    means its default board, anything else is taken as the board file itself."""
+    if os.path.isdir(target):
+        return os.path.join(target, DEFAULT_BOARD)
+    return target
+
+
+def _spawn_service(port: int, host: str = "127.0.0.1") -> int:
+    """Launch a detached `painel service` on `port`, logging to
+    ~/.painel/service.log. There is exactly ONE of these per machine now --
+    the whole point of M13 (§17.1: N processes for N projects, plus the
+    machinery to herd them, is gone).
+
+    Note what does NOT happen here: stdout is NOT the agent's event channel
+    any more, so this redirect is pure debugging convenience. Each board's
+    events are written straight to its own <board>.log by the service itself
+    (server.emit_event, §17.2.2)."""
+    log_fh = open(registry.service_log_path(), "a", encoding="utf-8")
     proc = subprocess.Popen(
-        [sys.executable, "-m", "painel", "serve", board, "--port", str(port)],
+        [sys.executable, "-m", "painel", "service", "--port", str(port), "--host", host],
         stdout=log_fh, stderr=subprocess.STDOUT,
         start_new_session=True,
     )
-    with open(_pidfile(board), "w", encoding="utf-8") as fh:
-        json.dump({"pid": proc.pid, "port": port}, fh)
-    _write_registry(proc.pid, port, board, kind="board")
+    registry.write_service(proc.pid, port, host)
     return proc.pid
 
 
-def _hub_logfile(port: int) -> str:
-    return os.path.join(_registry_dir(), f"hub-{port}.log")
-
-
-def _hub_pidfile(port: int) -> str:
-    return os.path.join(_registry_dir(), f"hub-{port}.pid")
-
-
-def _spawn_hub(port: int) -> int:
-    """Launch a detached `painel hub` on `port` (§13.2). A hub is itself a
-    `painel serve`-style process -- but of a synthetic/generated board, not
-    a file on disk -- so it gets its own code path (`python -m painel hub`,
-    not `... serve <board>`) and its own log/pidfile under the registry dir
-    (there's no project board path to hang a `<board>.log`/`<board>.pid` off
-    of). Registered with kind='hub' so restart-all's discovery can tell it
-    apart from a normal board instance and respawn it correctly (see
-    _discover_running_boards/cmd_restart_all)."""
-    log_fh = open(_hub_logfile(port), "a", encoding="utf-8")
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "painel", "hub", "--port", str(port)],
-        stdout=log_fh, stderr=subprocess.STDOUT,
-        start_new_session=True,
-    )
-    with open(_hub_pidfile(port), "w", encoding="utf-8") as fh:
-        json.dump({"pid": proc.pid, "port": port}, fh)
-    _write_registry(proc.pid, port, board=None, kind="hub")
-    return proc.pid
-
-
-def _is_our_hub(port: int) -> bool:
-    """Best-effort signature check: is whatever answers on `port` actually a
-    pAInel hub, or an unrelated service that happens to occupy the hub's
-    default port (8765 is a common low port -- collisions with something
-    else the user already runs there are entirely plausible, not hypothetical:
-    caught this exact case during dogfooding, port 8765 already held by an
-    unrelated project). A quick GET + title match, not a real handshake --
-    false negatives just mean an extra (harmless) stderr notice, never a
-    crash or a stolen port."""
+def _is_our_service(port: int) -> bool:
+    """Best-effort signature check: is whatever answers on `port` actually the
+    pAInel service, or an unrelated app that happens to occupy 8765? (Not
+    hypothetical: caught exactly this during dogfooding -- 8765 was already
+    held by an unrelated project on the author's machine, which is why §13's
+    _is_our_hub existed and why this, its M13 descendant, still does.) A quick
+    GET + title match, not a real handshake -- a false negative just means a
+    clear error message instead of silently adopting someone else's port."""
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/", timeout=1) as r:
             body = r.read(4096).decode("utf-8", "ignore")
     except (OSError, urllib.error.URLError, TimeoutError):
         return False
-    from .hub import STRINGS as HUB_STRINGS
-    return HUB_STRINGS["title"] in body
+    from .directory import STRINGS as DIR_STRINGS
+    return DIR_STRINGS["title"] in body
 
 
-def _ensure_hub_running(port: int = HUB_PORT) -> None:
-    """Idempotent, same _spawn-family pattern as cmd_open's own board check
-    (§13.2): if a hub is already alive on `port`, do nothing; otherwise start
-    one. Never opens a browser tab -- the hub is the thing you bookmark once,
-    not something that appears unprompted."""
-    for inst in _discover_running_boards():
-        if inst.get("kind") == "hub" and inst["port"] == port:
-            return
+def _service_running(port: int) -> bool:
+    info = registry.read_service()
+    if not info or info.get("port") != port:
+        return False
+    return _pid_alive(info.get("pid", -1)) and not _port_free(port)
+
+
+def _ensure_service_running(port: int = SERVICE_PORT) -> int | None:
+    """Idempotent (§17.2.3: `painel open` in any directory keeps Just
+    Working). Returns the port the service is reachable on, or None if it
+    could not be started.
+
+    The port is now THE ADDRESS -- it goes in a bookmark that must keep
+    working forever -- so a foreign occupant is a hard, explicit failure
+    suggesting --port, never a silent wander to 8766 (§17.5)."""
+    if _service_running(port):
+        return port
     if not _port_free(port):
-        if not _is_our_hub(port):
-            print(
-                f"aviso: a porta {port} já está ocupada por outro serviço -- "
-                f"o hub do pAInel não arrancou aí. Usa 'painel hub --port <N>' "
-                f"noutra porta se quiseres o hub mesmo assim.",
-                file=sys.stderr,
-            )
-        return  # either it's genuinely our hub already, or something else we won't fight
-    _spawn_hub(port)
+        if _is_our_service(port):
+            # Running, but service.json is stale/missing (e.g. started by hand
+            # with `painel service`). Adopt it rather than refuse to use it.
+            registry.write_service(-1, port)
+            return port
+        print(
+            f"erro: a porta {port} já está ocupada por outro serviço, "
+            f"por isso o pAInel não arrancou aí. Escolhe outra porta com "
+            f"'painel open --port <N>' (ou liberta a {port}).",
+            file=sys.stderr,
+        )
+        return None
+    _spawn_service(port)
     _wait_until_listening(port)
+    return port
 
 
 def _wait_until_listening(port: int, tries: int = 50) -> None:
@@ -254,186 +249,135 @@ def _wait_until_listening(port: int, tries: int = 50) -> None:
         time.sleep(0.1)
 
 
-def cmd_open(board: str, port: int | None) -> int:
-    if not os.path.exists(board):
-        save_board(board, STARTER)
-        print(f"board criado: {board}")
-    _default_agent_status_if_absent(board)
-
-    _ensure_hub_running()  # §13.2 -- idempotent, no browser tab for the hub itself
-
-    info = _read_pidfile(board)
-    if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
-        url = f"http://localhost:{info['port']}/"
-        print(f"pAInel já está a correr: {url}")
-        webbrowser.open(url)
-        return 0
-
-    chosen_port = port or _find_free_port()
-    _spawn(board, chosen_port)
-    _wait_until_listening(chosen_port)
-    url = f"http://localhost:{chosen_port}/"
-    webbrowser.open(url)
-    print(f"pAInel aberto: {url}  (para parar: python3 -m painel stop {board})")
-    return 0
-
-
-def cmd_stop(board: str) -> int:
-    info = _read_pidfile(board)
-    if not info:
-        print("não há nenhum pAInel a correr para este board.")
-        return 0
-    pid = info.get("pid")
-    if pid and _pid_alive(pid):
-        try:
-            os.kill(pid, 15)
-        except OSError:
-            pass
-    if "port" in info:
-        _remove_registry(info["port"])
-    os.remove(_pidfile(board))
-    print("parado.")
-    return 0
-
-
-def cmd_status(board: str) -> int:
-    info = _read_pidfile(board)
-    if info and _pid_alive(info.get("pid", -1)) and not _port_free(info["port"]):
-        print(f"a correr em http://localhost:{info['port']}/  (pid {info['pid']})")
-    else:
-        print("parado.")
-    return 0
-
-
-def _registry_dir() -> str:
-    """Central, machine-wide record of every instance _spawn() has started,
-    one small JSON file per port. This exists ONLY so restart-all can find
-    every running instance without hunting down per-project pidfiles or
-    parsing `ps` output -- an earlier version tried the latter and broke on
-    any board path containing a space (e.g. Google Drive's "Meu Drive"),
-    since `ps`'s printed command line has no reliable way to tell "a space
-    inside one argument" from "a space between two arguments" once the
-    kernel's argv boundaries are gone. A file per port sidesteps that
-    entirely: the board path is read back as a JSON string, never
-    reconstructed from shell text."""
-    d = os.path.join(os.path.expanduser("~"), ".painel", "instances")
-    os.makedirs(d, exist_ok=True)
-    return d
-
-
-def _registry_path(port: int) -> str:
-    return os.path.join(_registry_dir(), f"{port}.json")
-
-
-def _write_registry(pid: int, port: int, board: str | None, kind: str = "board") -> None:
-    """`kind` distinguishes a normal board instance ('board', the default --
-    and the implicit value of every pre-M9 registry entry, which has no
-    `kind` key at all) from the hub itself ('hub', §13.2), so restart-all
-    knows whether to respawn with `painel serve <board>` or `painel hub`.
-    `board` is None for a hub entry (there is no board.json backing it)."""
-    entry = {"pid": pid, "port": port, "kind": kind}
-    entry["board"] = os.path.abspath(board) if board is not None else None
-    with open(_registry_path(port), "w", encoding="utf-8") as fh:
-        json.dump(entry, fh)
-
-
-def _remove_registry(port: int) -> None:
-    try:
-        os.remove(_registry_path(port))
-    except OSError:
-        pass
-
-
-def _discover_running_boards(kind: str | None = None) -> list[dict]:
-    """Every instance _spawn()/_spawn_hub() has ever started that is still
-    actually alive right now (pid alive AND its port no longer free) --
-    reads the central registry (see _registry_dir), not the process table. A
-    registry entry whose process has since died is stale and removed on
-    sight (self-healing: no manual cleanup needed as instances come and go).
-
-    `kind` defaults to 'board' on any entry that predates M9 and therefore
-    has no `kind` key at all -- this is the backward-compat rule (§13's
-    registry format extension): old entries only ever described boards, so
-    absence of the key means exactly that. Pass kind="board"/"hub" to filter
-    (the hub's own listing, painel/hub.py, only ever wants boards).
-
-    Returns [{"pid", "board", "port", "kind"}] ("board" is None for hubs)."""
-    found = []
-    d = _registry_dir()
-    try:
-        names = os.listdir(d)
-    except OSError:
-        return []
-    for name in names:
-        if not name.endswith(".json"):
-            continue
-        path = os.path.join(d, name)
-        try:
-            with open(path, "r", encoding="utf-8") as fh:
-                entry = json.load(fh)
-            pid, port, board = entry["pid"], entry["port"], entry["board"]
-            entry_kind = entry.get("kind") or "board"
-        except (OSError, json.JSONDecodeError, KeyError, TypeError):
-            _try_remove(path)
-            continue
-        if _pid_alive(pid) and not _port_free(port):
-            if kind is not None and entry_kind != kind:
-                continue
-            found.append({"pid": pid, "board": board, "port": port, "kind": entry_kind})
-        else:
-            _try_remove(path)  # stale -- that instance is gone
-    return found
-
-
-def _try_remove(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-
-
-def cmd_restart_all() -> int:
-    """Restart every running pAInel instance on this machine on the SAME
-    port (and, for boards, the same board file), so a freshly-shipped painel
-    version is picked up everywhere at once without hunting down each
-    project's process by hand. Respawns each instance with the code path
-    matching its registry `kind` (§13.2/M9): a hub entry gets `painel hub
-    --port <port>` back, a board entry gets `painel serve <board> --port
-    <port>` back -- old-format entries with no `kind` key default to
-    'board' (see _discover_running_boards), so this is fully backward
-    compatible with a registry written before M9 shipped."""
-    instances = _discover_running_boards()
-    if not instances:
-        print("nenhum pAInel a correr.")
-        return 0
-    for inst in instances:
-        pid, board, port, kind = inst["pid"], inst["board"], inst["port"], inst["kind"]
-        if _pid_alive(pid):
-            try:
-                os.kill(pid, 15)
-            except OSError:
-                pass
-        for _ in range(50):
-            if not _pid_alive(pid):
-                break
-            time.sleep(0.1)
-        _wait_until_listening_free(port)
-        if kind == "hub":
-            new_pid = _spawn_hub(port)
-            _wait_until_listening(port)
-            print(f"reiniciado: hub  http://localhost:{port}/  (pid {new_pid})")
-        else:
-            new_pid = _spawn(board, port)
-            _wait_until_listening(port)
-            print(f"reiniciado: {board}  http://localhost:{port}/  (pid {new_pid})")
-    return 0
-
-
 def _wait_until_listening_free(port: int, tries: int = 50) -> None:
     for _ in range(tries):
         if _port_free(port):
             return
         time.sleep(0.1)
+
+
+def _service_port(explicit: int | None) -> int:
+    if explicit:
+        return explicit
+    info = registry.read_service()
+    return (info or {}).get("port") or SERVICE_PORT
+
+
+def _check_exposure(host: str, ack: bool) -> bool:
+    """Exposure safety, fail closed (§17.6). A non-loopback bind makes every
+    board on this machine reachable, and boards routinely accumulate secrets
+    (the author's own Livrete board holds plaintext passwords for three test
+    accounts in a form block, today, on disk). A footgun a typo can trigger is
+    a defect -- so this refuses to start rather than warning and continuing."""
+    if host in LOOPBACK_HOSTS or ack:
+        return True
+    print(
+        f"erro: recusei arrancar em {host} (fora de 127.0.0.1).\n"
+        f"Os boards contêm credenciais em texto simples com frequência "
+        f"(senhas de teste, tokens, dados de clientes) e o pAInel NÃO tem "
+        f"autenticação nenhuma -- de propósito (docs/SPEC.md §17.6).\n"
+        f"Expor isto na rede é dar essas credenciais a quem lá chegar.\n"
+        f"Se é mesmo isso que queres, repete com {EXPOSE_ACK_FLAG}.",
+        file=sys.stderr,
+    )
+    return False
+
+
+def cmd_open(target: str, port: int | None) -> int:
+    board = _resolve_board_arg(target)
+    if not os.path.exists(board):
+        os.makedirs(os.path.dirname(os.path.abspath(board)), exist_ok=True)
+        save_board(board, _starter(board))
+        print(f"board criado: {board}")
+    _default_agent_status_if_absent(board)
+    slug = registry.register(board)
+
+    chosen = _ensure_service_running(_service_port(port))
+    if chosen is None:
+        return 1
+    url = f"http://localhost:{chosen}/{slug}"
+    webbrowser.open(url)
+    print(f"pAInel aberto: {url}  (todos os projetos: http://localhost:{chosen}/)")
+    return 0
+
+
+def cmd_add(target: str) -> int:
+    """Register without opening -- for bulk-adding existing projects (§17.5)."""
+    board = _resolve_board_arg(target)
+    if not os.path.exists(board):
+        print(f"erro: não existe nenhum board em {board}", file=sys.stderr)
+        return 1
+    slug = registry.register(board)
+    port = _service_port(None)
+    print(f"registado: {slug}  ->  {board}\n   http://localhost:{port}/{slug}")
+    return 0
+
+
+def cmd_remove(slug: str) -> int:
+    """Unregister. NEVER deletes the board file (§17.5) -- the board belongs to
+    the project, not to us."""
+    if registry.unregister(slug):
+        print(f"removido do registo: {slug}  (o board em si não foi apagado)")
+        return 0
+    print(f"não está registado: {slug}", file=sys.stderr)
+    return 1
+
+
+def cmd_stop() -> int:
+    info = registry.read_service()
+    if not info:
+        print("o serviço do pAInel não está a correr.")
+        return 0
+    pid = info.get("pid")
+    if pid and pid > 0 and _pid_alive(pid):
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            pass
+    registry.clear_service()
+    print("parado.")
+    return 0
+
+
+def cmd_status() -> int:
+    info = registry.read_service()
+    n = len(registry.load_projects())
+    if info and _service_running(info.get("port", -1)):
+        print(f"a correr em http://localhost:{info['port']}/  "
+              f"(pid {info['pid']}, {n} projeto{'s' if n != 1 else ''} registado"
+              f"{'s' if n != 1 else ''})")
+    else:
+        print(f"parado.  ({n} projeto{'s' if n != 1 else ''} registado"
+              f"{'s' if n != 1 else ''} — 'painel open' para arrancar)")
+    return 0
+
+
+def cmd_restart_all() -> int:
+    """Restart the service so a freshly-shipped painel version is picked up --
+    the author runs this after every upgrade, so the NAME stays even though
+    M13 left it far less to do: there is one process now, not one per project
+    (§17.5). Same port, so every bookmark survives the restart."""
+    info = registry.read_service()
+    if not info:
+        print("nenhum pAInel a correr.")
+        return 0
+    port, pid = info.get("port", SERVICE_PORT), info.get("pid", -1)
+    host = info.get("host", "127.0.0.1")
+    if pid and pid > 0 and _pid_alive(pid):
+        try:
+            os.kill(pid, 15)
+        except OSError:
+            pass
+        for _ in range(50):
+            if not _pid_alive(pid):
+                break
+            time.sleep(0.1)
+    _wait_until_listening_free(port)
+    new_pid = _spawn_service(port, host)
+    _wait_until_listening(port)
+    n = len(registry.load_projects())
+    print(f"reiniciado: http://localhost:{port}/  (pid {new_pid}, {n} projetos)")
+    return 0
 
 
 def _skill_source_dir() -> str | None:
@@ -497,28 +441,39 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="painel", description="pAInel — second interface for CLI agents")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    po = sub.add_parser("open", help="start (if needed) and open the board in the browser — the one command to remember")
-    po.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+    po = sub.add_parser("open", help="register this project (if new), start the service (if needed), open the board — the one command to remember")
+    po.add_argument("dir", nargs="?", default=".", help="project directory (or a board.json path)")
     po.add_argument("--port", type=int, default=None)
 
-    pstop = sub.add_parser("stop", help="stop the running server for this board")
-    pstop.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+    pa = sub.add_parser("add", help="register a project's board without opening it (for bulk-adding existing projects)")
+    pa.add_argument("dir", nargs="?", default=".", help="project directory (or a board.json path)")
 
-    pstat = sub.add_parser("status", help="check if a board's server is running")
-    pstat.add_argument("board", nargs="?", default=DEFAULT_BOARD)
+    prm = sub.add_parser("remove", help="unregister a project by slug (never deletes the board file)")
+    prm.add_argument("slug")
 
-    sub.add_parser("restart-all", help="restart every running pAInel instance on this machine (same board+port) -- run after upgrading painel")
+    sub.add_parser("stop", help="stop the pAInel service")
+    sub.add_parser("status", help="is the service up, on what port, with how many projects")
+    sub.add_parser("restart-all", help="restart the pAInel service (same port) -- run after upgrading painel")
 
     pis = sub.add_parser("install-skill", help="symlink the Claude Code skill into a project (always in sync, never a stale copy)")
     pis.add_argument("project_dir", nargs="?", default=".")
 
-    ps = sub.add_parser("serve", help="serve a board.json (blocking, foreground)")
+    ps = sub.add_parser("serve", help="serve ONE board.json (blocking, foreground; no registry)")
     ps.add_argument("board")
     ps.add_argument("--port", type=int, default=8765)
     ps.add_argument("--open", action="store_true", help="open the browser")
 
-    ph = sub.add_parser("hub", help="serve the hub (docs/SPEC.md §13): a fixed-port page listing every live board (blocking, foreground)")
-    ph.add_argument("--port", type=int, default=HUB_PORT)
+    for name, helptext in (
+        ("service", "serve every registered project (docs/SPEC.md §17), blocking, foreground"),
+        ("hub", "alias for 'service' (kept so existing habits and scripts don't break)"),
+    ):
+        psv = sub.add_parser(name, help=helptext)
+        psv.add_argument("--port", type=int, default=SERVICE_PORT)
+        psv.add_argument("--host", default="127.0.0.1",
+                         help="bind address; anything but loopback needs " + EXPOSE_ACK_FLAG)
+        psv.add_argument(EXPOSE_ACK_FLAG, dest="expose_ack", action="store_true",
+                         help="acknowledge that a non-loopback bind exposes every board, "
+                              "credentials included, with no authentication at all")
 
     pi = sub.add_parser("init", help="write a starter board.json")
     pi.add_argument("board")
@@ -529,11 +484,15 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
 
     if args.cmd == "open":
-        return cmd_open(args.board, args.port)
+        return cmd_open(args.dir, args.port)
+    if args.cmd == "add":
+        return cmd_add(args.dir)
+    if args.cmd == "remove":
+        return cmd_remove(args.slug)
     if args.cmd == "stop":
-        return cmd_stop(args.board)
+        return cmd_stop()
     if args.cmd == "status":
-        return cmd_status(args.board)
+        return cmd_status()
     if args.cmd == "restart-all":
         return cmd_restart_all()
     if args.cmd == "install-skill":
@@ -542,8 +501,10 @@ def main(argv=None) -> int:
         _default_agent_status_if_absent(args.board)
         serve(args.board, port=args.port, open_browser=args.open)
         return 0
-    if args.cmd == "hub":
-        serve_hub(port=args.port)
+    if args.cmd in ("service", "hub"):
+        if not _check_exposure(args.host, args.expose_ack):
+            return 1
+        serve_service(port=args.port, host=args.host)
         return 0
     if args.cmd == "init":
         if os.path.exists(args.board):

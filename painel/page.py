@@ -6,8 +6,27 @@ inserted at the {block_js} placeholder by server.py.
 
 The {cr_global} placeholder holds the M8 global "Pedir alteração" affordance
 (docs/SPEC.md §12.3) -- a real board's render() fills it with CR_GLOBAL_HTML;
-the hub (M9, painel/hub.py) fills it with "" since it's host-app chrome, not
-a board, and change requests don't apply to it.
+the directory (M13, painel/directory.py) fills it with "" since it's host-app
+chrome, not a board, and change requests don't apply to it.
+
+{base_path_js} / {channel_id_js} (M13, docs/SPEC.md §17.4) are the two values
+the unified service must vary per board, and the two the single-board `painel
+serve` leaves exactly as they were pre-M13:
+
+- `base_path_js`: '""' for single-board mode (endpoints stay /version and
+  /event), '"/<slug>"' under the service.
+- `channel_id_js`: the BroadcastChannel identity. Under the service it's the
+  board's slug -- M10 keyed it on location.port, and with every board now
+  sharing ONE port that would make two *different* boards think they were
+  duplicate tabs of each other and close one. Single-board mode keeps the
+  port-derived expression verbatim, because there the port genuinely is the
+  instance identity (§6.6).
+
+Both are templated server-side rather than derived from location.pathname in
+JS (which §17.4 suggests): the client cannot tell `/<slug>` under the service
+apart from `/<page>` under `painel serve` -- the same first path segment means
+different things in the two modes -- so client-side derivation would silently
+break single-board mode's page URLs. The server always knows which mode it is.
 """
 from __future__ import annotations
 
@@ -160,9 +179,12 @@ footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.
 .chat-chip {{ margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
   letter-spacing:normal; }}
 .chat-msgs {{ max-height:340px; overflow-y:auto; margin-bottom:.5rem; }}
-/* --- Hub (M9, docs/SPEC.md §13) -- cards are plain links to each board --- */
-a.hub-card {{ display:block; text-decoration:none; color:inherit; }}
-a.hub-card:hover {{ border-color:var(--accent); }}
+/* --- Directory (M13, docs/SPEC.md §17.4) -- cards are plain links to each
+   registered project; a project whose board.json is gone is shown, not
+   dropped (§17.3), just dimmed and not clickable. --- */
+a.dir-card {{ display:block; text-decoration:none; color:inherit; }}
+a.dir-card:hover {{ border-color:var(--accent); }}
+.dir-missing {{ opacity:.7; border-style:dashed; }}
 /* --- resources block (M11, docs/SPEC.md §15) --- */
 ul.res-list li.res-item {{ display:flex; align-items:center; gap:.7rem;
   padding:.4rem 0; border-bottom:1px solid var(--border); }}
@@ -206,24 +228,35 @@ body.has-nav {{ max-width:1040px; }}
 {cr_global}
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
+// Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md
+// §17.4): '' in single-board mode (`painel serve` -> /event, /version), or
+// '/<slug>' under the unified service (-> /<slug>/event, /<slug>/version).
+// Templated server-side: only the server knows which mode it's in.
+const basePath = {base_path_js};
 async function send(payload) {{
   try {{
-    await fetch('/event', {{method:'POST', headers:{{'Content-Type':'application/json'}},
+    await fetch(basePath + '/event', {{method:'POST', headers:{{'Content-Type':'application/json'}},
       body: JSON.stringify(payload)}});
   }} catch (e) {{}}
 }}
 function reloadSoon() {{ knownVersion = null; setTimeout(() => location.reload(), 250); }}
 
 // --- Tab hygiene (M10, docs/SPEC.md §14.1) ----------------------------------
-// Duplicate-tab self-close via BroadcastChannel. The channel name is derived
-// client-side from location.port -- stable per INSTANCE (the port is the
-// instance identity, §6.6), not per board path, and needs zero new
-// server-side plumbing (render()/context unchanged). Every page pAInel
-// serves (board pages and the hub) includes this, since both are pages a
-// human might open twice via `painel open`/hub bookmarking.
+// Duplicate-tab self-close via BroadcastChannel. The channel name identifies
+// THE BOARD, not the tab: two tabs of the same board must dedupe, two tabs of
+// DIFFERENT boards must never touch each other.
+//
+// M10 keyed this on location.port, which was correct when one board == one
+// process == one port (§6.6). Under M13's unified service every board shares
+// one port, so a port-keyed channel would make two different boards mutually
+// self-closing -- board B's tab would announce, board A's tab would answer
+// "already open", and B would close itself. The service therefore templates
+// the board's slug into the expression below, while single-board `painel
+// serve` keeps the original port-derived one verbatim, since there the port
+// genuinely still is the instance identity (docs/SPEC.md §17.4).
 (function() {{
   if (typeof BroadcastChannel === 'undefined') return;  // graceful no-op on ancient browsers
-  const channelName = 'painel-' + (location.port || '80');
+  const channelName = 'painel-' + {channel_id_js};
   const bc = new BroadcastChannel(channelName);
   let answered = false;
   bc.onmessage = (ev) => {{
@@ -383,7 +416,7 @@ updateWhoseTurn(pendingCount, agentStatus, hasResolved);
 let knownVersion = null;
 async function poll() {{
   try {{
-    const r = await fetch('/version', {{cache:'no-store'}});
+    const r = await fetch(basePath + '/version', {{cache:'no-store'}});
     const data = await r.json();
     if (knownVersion === null) {{ knownVersion = data.v; }}
     else if (data.v !== knownVersion && !isBusy()) {{ location.reload(); return; }}

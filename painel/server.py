@@ -10,9 +10,18 @@ as one JSONL line on stdout, so the agent can react in real time.
 Protocol
 --------
 - Input:  board.json  (ordered list of typed blocks)
-- Output: one JSON line per interaction on stdout
+- Output: one JSON line per interaction, in that board's own `<board>.log`
+          (and on stdout). See emit_event() -- this is the agent's channel
+          and the contract M13 was built around, not incidental logging.
 
-Run:  python -m painel serve board.json --port 8765 --open
+Run:  python -m painel service            # every registered project (M13)
+      python -m painel serve board.json   # one board, foreground
+
+Two serving modes live here (docs/SPEC.md §17):
+- `_Handler`/`serve()`   -- one process, one board, board at the root.
+- `_ServiceHandler`/`serve_service()` -- one process, every registered
+  project, addressed by slug. Both share `_Routes` for what a board page, a
+  version payload and an event *are*; only their route tables differ.
 
 This module is the HTTP layer + event dispatch + page shell only. Block
 rendering/behavior lives in painel/blocks/; the page template, CSS, and
@@ -27,6 +36,7 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
+from . import directory, registry
 from .blocks import REGISTRY
 from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
 from .page import _PAGE, CR_GLOBAL_HTML
@@ -158,7 +168,7 @@ def _append_change_request(board: dict, data: dict) -> dict:
     return cr
 
 
-def _change_requests_html(board: dict) -> str:
+def _change_requests_html(board: dict, base: str = "") -> str:
     """'Pedidos em aberto' card (§12.4) -- board-level rendering, not a
     blocks/*.py module, since change_requests is board-level state, not a
     block. Reuses log-block-style rows conceptually."""
@@ -187,7 +197,7 @@ def _change_requests_html(board: dict) -> str:
             if item_text:
                 item_suffix = f' — <em>{e(item_text)}</em>'
         if bid:
-            href = f"{_page_href(block_page.get(str(bid)))}#blk-{e(bid)}"
+            href = f"{_page_href(block_page.get(str(bid)), base)}#blk-{e(bid)}"
             link = f' <a href="{e(href)}">→ {e(bid)}</a>'
         else:
             link = ""
@@ -247,16 +257,23 @@ def _page_label(page) -> str:
     return page if page is not None else None  # resolved against board title by caller
 
 
-def _page_href(page) -> str:
+def _page_href(page, base: str = "") -> str:
     """Friendly path-based URL for a page (§11.2): '/' for Home, '/<page>'
     otherwise -- e.g. '/Estrat%C3%A9gia' instead of '/?page=Estrat%C3%A9gia'.
     Browsers commonly render the percent-escaped UTF-8 back to readable
-    accented text in the address bar. `?page=` on '/' is still accepted by
-    do_GET for old bookmarked/shared links (see do_GET)."""
-    return "/" if page is None else f"/{quote(page, safe='')}"
+    accented text in the address bar. `?page=` on Home is still accepted by
+    do_GET for old bookmarked/shared links (see do_GET).
+
+    `base` (M13, §17.4) prefixes every link with the board's own mount point
+    under the unified service ('/livrete' -> '/livrete', '/livrete/Estratégia').
+    It stays '' in single-board mode, where the board IS the server root, so
+    every pre-M13 URL is produced byte-identically."""
+    if page is None:
+        return base or "/"
+    return f"{base}/{quote(page, safe='')}"
 
 
-def _nav_html(board: dict, active_page) -> str:
+def _nav_html(board: dict, active_page, base: str = "") -> str:
     """Sidebar/dropdown nav (§11.2). Empty string when < 2 distinct pages --
     this is the backward-compat guarantee: pageless boards get zero nav markup."""
     pages = _pages(board)
@@ -269,10 +286,10 @@ def _nav_html(board: dict, active_page) -> str:
         name = board_title if p is None else p
         cls = "nav-item active" if p == active_page else "nav-item"
         items.append(
-            f'<a class="{cls}" href="{e(_page_href(p))}">{e(name)}{_badge(counts.get(p, 0))}</a>'
+            f'<a class="{cls}" href="{e(_page_href(p, base))}">{e(name)}{_badge(counts.get(p, 0))}</a>'
         )
     options = "".join(
-        f'<option value="{e(_page_href(p))}"{" selected" if p == active_page else ""}>'
+        f'<option value="{e(_page_href(p, base))}"{" selected" if p == active_page else ""}>'
         f'{e(board_title if p is None else p)}{_badge(counts.get(p, 0))}</option>'
         for p in pages
     )
@@ -360,7 +377,19 @@ def _change_request_box_html(block_id) -> str:
     )
 
 
-def render(board: dict, active_page=None) -> str:
+def render(board: dict, active_page=None, base_path: str = "", slug: str | None = None) -> str:
+    """Render one board page.
+
+    `base_path`/`slug` are M13's only additions (docs/SPEC.md §17.4) and both
+    default to single-board mode, so every pre-M13 caller renders exactly what
+    it rendered before:
+
+    - `base_path`: '' when the board is the server root (`painel serve`), or
+      '/<slug>' when it's mounted under the unified service. Every link and
+      every JS endpoint hangs off it.
+    - `slug`: the board's BroadcastChannel identity under the service. None
+      keeps M10's port-derived channel name (§14.1), which is still correct
+      when one process serves exactly one board."""
     all_blocks = board.get("blocks", [])
     pages = _pages(board)
     if active_page not in pages:
@@ -393,7 +422,7 @@ def render(board: dict, active_page=None) -> str:
     # Home so it doesn't repeat identically on every page of a multi-page
     # board (its rows already link cross-page via _page_href when relevant).
     if active_page is None:
-        blocks += _change_requests_html(board)
+        blocks += _change_requests_html(board, base_path)
     meta = board.get("meta", {})
     metaline = " · ".join(
         filter(None, [
@@ -412,7 +441,7 @@ def render(board: dict, active_page=None) -> str:
             # link works regardless of which page is currently active -- a
             # bare fragment previously failed silently when a Home-page item
             # was pending while viewing a different page.
-            href = f"{_page_href(p)}#blk-{e(bid)}"
+            href = f"{_page_href(p, base_path)}#blk-{e(bid)}"
             links.append(f'<a href="{e(href)}">{e(label)}</a>')
         attention = (
             f'<div class="attention"><span class="attention-count">{len(pending)}</span> '
@@ -425,7 +454,7 @@ def render(board: dict, active_page=None) -> str:
     agent_status, has_resolved = wt["agent_status"], wt["has_resolved"]
     title_text = _title_text(board_title, pending_count, agent_status)
     chip_text = _status_chip(pending_count, agent_status, has_resolved)
-    nav = _nav_html(board, active_page)
+    nav = _nav_html(board, active_page, base_path)
     # Backward compat (§11.1): pageless boards get zero nav-related markup --
     # no wrapper divs, no body class -- byte-identical to the pre-M6 shell.
     page_shell_open = '<div class="page-shell">' if nav else ""
@@ -438,6 +467,12 @@ def render(board: dict, active_page=None) -> str:
         page_shell_open=page_shell_open, page_shell_close=page_shell_close,
         page_main_open=page_main_open, page_main_close=page_main_close,
         blocks=blocks, block_js=_block_js(),
+        base_path_js=_js_string(base_path),
+        # None -> M10's original client-side, port-derived channel name, byte
+        # for byte (single-board mode). A slug -> that board's own channel, so
+        # two different boards sharing the service's one port never mistake
+        # each other for duplicate tabs (§17.4).
+        channel_id_js=_js_string(slug) if slug else "(location.port || '80')",
         board_title_js=_js_string(board_title),
         pending_count=pending_count,
         agent_status_js=_js_string(agent_status),
@@ -450,8 +485,128 @@ def render(board: dict, active_page=None) -> str:
 # --------------------------------------------------------------------------- #
 # HTTP                                                                         #
 # --------------------------------------------------------------------------- #
-class _Handler(BaseHTTPRequestHandler):
-    board_path = "board.json"
+def apply_event(board_path: str, data: dict) -> bool:
+    """Apply an incoming event to the board at `board_path`. Returns True if
+    the event is silent (must not be emitted to the agent).
+
+    Board-path-parameterized rather than reading a handler attribute, because
+    M13's service applies events to N different boards from one process --
+    but this is the exact same code path single-board mode has always used,
+    so an event means precisely the same thing in both modes."""
+    ev = data.get("event")
+    silent = False
+    with _lock:
+        board = load_board(board_path)
+        if ev == "change_request":
+            # Universal event (docs/SPEC.md §12.1) -- not addressed to a
+            # block module at all (block may be null for the global
+            # affordance, §12.3), so it's handled here directly rather
+            # than dispatched through a block's apply(). Never silent:
+            # the entire point is that this reaches the agent.
+            _append_change_request(board, data)
+            save_board(board_path, board)
+            return False
+        blk = _find(board, data.get("block"))
+        if blk is not None:
+            mod = REGISTRY.get(blk.get("type"))
+            if mod is not None:
+                try:
+                    handled = mod.apply(blk, data)
+                except Exception as exc:
+                    print(f"pAInel: erro ao aplicar evento {ev!r}: {exc}", file=sys.stderr)
+                    handled = False
+                if handled and ev in getattr(mod, "SILENT_EVENTS", ()):
+                    silent = True
+                if not handled:
+                    print(f"pAInel: evento {ev!r} não reconhecido pelo bloco {blk.get('id')!r}", file=sys.stderr)
+            else:
+                print(f"pAInel: tipo de bloco desconhecido {blk.get('type')!r}", file=sys.stderr)
+        else:
+            print(f"pAInel: bloco {data.get('block')!r} não encontrado para evento {ev!r}", file=sys.stderr)
+        save_board(board_path, board)
+    return silent
+
+
+def board_log_path(board_path: str) -> str:
+    return board_path + ".log"
+
+
+def emit_event(data: dict, board_path: str | None = None) -> None:
+    """Emit exactly one JSONL line per interaction, so the agent can react.
+
+    THE load-bearing contract of M13 (docs/SPEC.md §17.2.2). Pre-M13, each
+    board had its own `painel serve` process whose stdout the CLI's `_spawn`
+    redirected into `<board>.log`; the agent tails that file, per project:
+
+        tail -n0 -F .painel-board.json.log | grep --line-buffered '^{'
+
+    The unified service has one stdout for every board, so redirecting it
+    would merge every project's events into one stream and force each
+    project's agent to filter out the others'. Instead the service writes
+    each event DIRECTLY to that board's own `<board>.log` (append + flush,
+    one open per line -- cheap at human click rates, and it survives the log
+    being rotated or deleted underneath us, which a long-lived handle would
+    not). Same file, same JSONL, same tail command, no agent-side change.
+
+    stdout still gets the line too: in single-board mode (`painel serve`,
+    board_path=None here) that IS the channel, unchanged; under the service
+    it's just an echo for debugging (§17.2.2 explicitly allows this) landing
+    in ~/.painel/service.log."""
+    line = json.dumps(data, ensure_ascii=False) + "\n"
+    if board_path is not None:
+        try:
+            with open(board_log_path(board_path), "a", encoding="utf-8") as fh:
+                fh.write(line)
+                fh.flush()
+        except OSError as exc:
+            # Never let a log-write failure break the interaction itself: the
+            # board is already saved by the time we get here.
+            print(f"pAInel: não consegui escrever em {board_log_path(board_path)!r}: {exc}",
+                  file=sys.stderr)
+    sys.stdout.write(line)
+    sys.stdout.flush()
+
+
+def _version_payload(board_path: str) -> dict:
+    """The freshness payload (§10.2's {v, pending, agent_status, has_resolved}
+    plus §15.2's watched_paths mtimes). Shared verbatim by single-board
+    /version and the service's /<slug>/version -- the payload is a property of
+    the board, not of how it's mounted."""
+    try:
+        v = os.path.getmtime(board_path)
+    except OSError:
+        v = 0
+    # Whose-turn fields ride along on the poll endpoint so the page can
+    # refresh title/favicon/chip every tick (§10.2) without a full reload --
+    # reload only happens when the version itself changes.
+    with _lock:
+        board = load_board(board_path)
+    # M11 (docs/SPEC.md §15.2): fold in the mtime of any on-disk path a block
+    # cares about, via the generic, block-type-agnostic watched_paths() hook
+    # (§2.1) -- so the page auto-refreshes when a linked file/folder changes,
+    # not just when board.json itself does. Deliberately NOT special-cased to
+    # "resources" by name: any block type, present or future, gets this for
+    # free by defining the hook.
+    v = max(v, _watched_paths_mtime(board))
+    blocks_list = board.get("blocks", [])
+    total = len(blocks_list)
+    blocks_html = "".join(
+        _block_html(b, {"index": i, "total": total}) for i, b in enumerate(blocks_list)
+    )
+    pending_count = len(_needs_user(board))
+    return {"v": v, **_whose_turn(board, blocks_html, pending_count)}
+
+
+class _Routes:
+    """HTTP plumbing + the three things "serving a board" means, shared by the
+    single-board handler and the unified service (M13).
+
+    The two handlers deliberately keep their own do_GET/do_POST: their ROUTE
+    TABLES genuinely differ (one board at the root vs N boards under slugs,
+    plus a directory and a 404 page), and flattening that into one
+    parameterized router was more confusing than the ~15 lines it saved. What
+    they must never diverge on -- what a board page, a version payload and an
+    event ARE -- lives here and is written once."""
 
     def log_message(self, *_):  # silence default logging
         pass
@@ -464,6 +619,48 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_html(self, html: str, code: int = 200) -> None:
+        self._send(code, html.encode("utf-8"), "text/html; charset=utf-8")
+
+    def _send_board_page(self, board_path, active_page, base_path="", slug=None) -> None:
+        with _lock:
+            board = load_board(board_path)
+        self._send_html(render(board, active_page, base_path=base_path, slug=slug))
+
+    def _send_version(self, board_path: str) -> None:
+        self._send(200, json.dumps(_version_payload(board_path)).encode(), "application/json")
+
+    def _read_json_body(self) -> dict:
+        length = int(self.headers.get("Content-Length", 0))
+        try:
+            data = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def _handle_event(self, board_path: str, log_to_board: bool) -> None:
+        data = self._read_json_body()
+        silent = apply_event(board_path, data)
+        # Events in a block's SILENT_EVENTS are UI housekeeping -- not worth
+        # waking the agent (e.g. plan_seen just clears an unread badge).
+        if not silent:
+            emit_event(data, board_path if log_to_board else None)
+        self._send(200, b'{"ok":true}', "application/json")
+
+
+# --------------------------------------------------------------------------- #
+# Single-board mode: `painel serve <board>` (unchanged, docs/SPEC.md §17.5)   #
+# --------------------------------------------------------------------------- #
+class _Handler(_Routes, BaseHTTPRequestHandler):
+    """One process, one board, board at the server root. Untouched by M13 by
+    design: it's the vendored/embedded path, the right tool for tests, and
+    keeping it is what keeps every pre-M13 test meaningful (§17.5)."""
+
+    board_path = "board.json"
+
+    def _apply(self, data: dict) -> bool:
+        return apply_event(self.board_path, data)
+
     def do_GET(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -473,44 +670,15 @@ class _Handler(BaseHTTPRequestHandler):
             # with any already-shared/bookmarked links from before this
             # change -- see docs/SPEC.md §11.2).
             qs = parse_qs(parsed.query)
-            active_page = qs.get("page", [None])[0]
-            with _lock:
-                board = load_board(self.board_path)
-            self._send(200, render(board, active_page).encode("utf-8"), "text/html; charset=utf-8")
+            self._send_board_page(self.board_path, qs.get("page", [None])[0])
         elif path not in ("/version", "/event"):
             # Any other path segment is treated as a page name, e.g.
             # "/Estrat%C3%A9gia" -> page "Estratégia". render() already
             # falls back to Home for a name that isn't a real page (covers
             # stray requests like /favicon.ico harmlessly).
-            active_page = unquote(path.lstrip("/")) or None
-            with _lock:
-                board = load_board(self.board_path)
-            self._send(200, render(board, active_page).encode("utf-8"), "text/html; charset=utf-8")
+            self._send_board_page(self.board_path, unquote(path.lstrip("/")) or None)
         elif path == "/version":
-            try:
-                v = os.path.getmtime(self.board_path)
-            except OSError:
-                v = 0
-            # Whose-turn fields ride along on the poll endpoint so the page
-            # can refresh title/favicon/chip every tick (§10.2) without a
-            # full reload -- reload only happens when the version itself changes.
-            with _lock:
-                board = load_board(self.board_path)
-            # M11 (docs/SPEC.md §15.2): fold in the mtime of any on-disk path a
-            # block cares about, via the generic, block-type-agnostic
-            # watched_paths() hook (§2.1) -- so the page auto-refreshes when a
-            # linked file/folder changes, not just when board.json itself does.
-            # Deliberately NOT special-cased to "resources" by name: any block
-            # type, present or future, gets this for free by defining the hook.
-            v = max(v, _watched_paths_mtime(board))
-            blocks_list = board.get("blocks", [])
-            total = len(blocks_list)
-            blocks_html = "".join(
-                _block_html(b, {"index": i, "total": total}) for i, b in enumerate(blocks_list)
-            )
-            pending_count = len(_needs_user(board))
-            payload = {"v": v, **_whose_turn(board, blocks_html, pending_count)}
-            self._send(200, json.dumps(payload).encode(), "application/json")
+            self._send_version(self.board_path)
         else:
             self._send(404, b"not found", "text/plain")
 
@@ -518,55 +686,10 @@ class _Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path != "/event":
             self._send(404, b"not found", "text/plain")
             return
-        length = int(self.headers.get("Content-Length", 0))
-        try:
-            data = json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
-            data = {}
-        silent = self._apply(data)
-        # Emit exactly one JSONL line per interaction so the agent can react.
-        # Events in a block's SILENT_EVENTS are UI housekeeping — not worth
-        # waking the agent (e.g. plan_seen just clears an unread badge).
-        if not silent:
-            sys.stdout.write(json.dumps(data, ensure_ascii=False) + "\n")
-            sys.stdout.flush()
-        self._send(200, b'{"ok":true}', "application/json")
-
-    def _apply(self, data: dict) -> bool:
-        """Apply an incoming event to the board. Returns True if the event
-        is silent (must not be emitted to stdout)."""
-        ev = data.get("event")
-        silent = False
-        with _lock:
-            board = load_board(self.board_path)
-            if ev == "change_request":
-                # Universal event (docs/SPEC.md §12.1) -- not addressed to a
-                # block module at all (block may be null for the global
-                # affordance, §12.3), so it's handled here directly rather
-                # than dispatched through a block's apply(). Never silent:
-                # the entire point is that this reaches the agent.
-                _append_change_request(board, data)
-                save_board(self.board_path, board)
-                return False
-            blk = _find(board, data.get("block"))
-            if blk is not None:
-                mod = REGISTRY.get(blk.get("type"))
-                if mod is not None:
-                    try:
-                        handled = mod.apply(blk, data)
-                    except Exception as exc:
-                        print(f"pAInel: erro ao aplicar evento {ev!r}: {exc}", file=sys.stderr)
-                        handled = False
-                    if handled and ev in getattr(mod, "SILENT_EVENTS", ()):
-                        silent = True
-                    if not handled:
-                        print(f"pAInel: evento {ev!r} não reconhecido pelo bloco {blk.get('id')!r}", file=sys.stderr)
-                else:
-                    print(f"pAInel: tipo de bloco desconhecido {blk.get('type')!r}", file=sys.stderr)
-            else:
-                print(f"pAInel: bloco {data.get('block')!r} não encontrado para evento {ev!r}", file=sys.stderr)
-            save_board(self.board_path, board)
-        return silent
+        # log_to_board=False: this process's stdout is the agent's channel in
+        # single-board mode (the CLI has always redirected it into
+        # <board>.log). Writing the file here too would double every line.
+        self._handle_event(self.board_path, log_to_board=False)
 
 
 def serve(board_path: str, port: int = 8765, open_browser: bool = False) -> None:
@@ -589,43 +712,85 @@ def serve(board_path: str, port: int = 8765, open_browser: bool = False) -> None
 
 
 # --------------------------------------------------------------------------- #
-# The hub (M9, docs/SPEC.md §13)                                              #
+# The unified service (M13, docs/SPEC.md §17)                                  #
 # --------------------------------------------------------------------------- #
-class _HubHandler(BaseHTTPRequestHandler):
-    """Serves painel/hub.py's render_hub() on every GET /. Deliberately a
-    separate, much smaller handler rather than a second full HTTP server
-    implementation -- same ThreadingHTTPServer bootstrapping and READY-line
-    convention as _Handler/serve() above, just a different (board-less)
-    route table, since the hub has no board.json, no /event, no /version
-    polling target of its own (§13.2: reuse serve()'s machinery, don't fork
-    a second server implementation)."""
+class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
+    """One process, every registered project, addressed by slug (§17.4):
 
-    def log_message(self, *_):
-        pass
+        /                 the directory
+        /<slug>           that board's Home        (?page= still accepted)
+        /<slug>/<page>    a specific page (§11)
+        /<slug>/version   that board's freshness payload
+        /<slug>/event     POST -- events for that board
 
-    def _send(self, code: int, body: bytes, ctype: str) -> None:
-        self.send_response(code)
-        self.send_header("Content-Type", ctype)
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.wfile.write(body)
+    'version' and 'event' are reserved page names under a slug, exactly as
+    /version and /event already were at the root pre-M13: a page named either
+    is unreachable. Known limitation, documented, not worth an /api/ prefix.
+
+    The registry is re-read on every request -- no caching, so `painel add` in
+    another terminal shows up on the next refresh (§13.2's rule, kept)."""
+
+    def _resolve(self, parsed):
+        """(entry, rest) for a parsed URL, or (None, slug) for an unknown slug,
+        or (None, None) for the service root."""
+        segments = [s for s in parsed.path.split("/") if s]
+        if not segments:
+            return None, None
+        slug = unquote(segments[0])
+        entry = registry.get(slug)
+        if entry is None:
+            return None, slug
+        rest = unquote(segments[1]) if len(segments) > 1 else ""
+        return entry, rest
+
+    def _send_unknown_slug(self, slug: str) -> None:
+        # §17.4: not a bare 404 -- list what IS registered, because the human
+        # either mistyped or the project was removed, and both are one click
+        # from recoverable.
+        self._send_html(directory.render_unknown_slug(slug, registry.entries()), code=404)
 
     def do_GET(self):
-        if urlparse(self.path).path != "/":
+        parsed = urlparse(self.path)
+        entry, rest = self._resolve(parsed)
+        if entry is None and rest is None:
+            self._send_html(directory.render_directory(registry.entries()))
+            return
+        if entry is None:
+            self._send_unknown_slug(rest)
+            return
+        base_path = f"/{entry['slug']}"
+        if rest == "version":
+            self._send_version(entry["path"])
+        elif rest == "event":
+            self._send(404, b"not found", "text/plain")  # POST-only, same as pre-M13's /event
+        elif rest:
+            self._send_board_page(entry["path"], rest, base_path, entry["slug"])
+        else:
+            # ?page= still accepted on a board's Home for old bookmarks (§17.4).
+            page = parse_qs(parsed.query).get("page", [None])[0]
+            self._send_board_page(entry["path"], page, base_path, entry["slug"])
+
+    def do_POST(self):
+        parsed = urlparse(self.path)
+        entry, rest = self._resolve(parsed)
+        if entry is None or rest != "event":
             self._send(404, b"not found", "text/plain")
             return
-        from . import hub as _hub
-        from .__main__ import _discover_running_boards
-        instances = _discover_running_boards(kind="board")
-        html = _hub.render_hub(instances).encode("utf-8")
-        self._send(200, html, "text/html; charset=utf-8")
+        # log_to_board=True: THE M13 contract (§17.2.2) -- this event goes to
+        # THIS board's own <board>.log and no other's. See emit_event().
+        self._handle_event(entry["path"], log_to_board=True)
 
 
-def serve_hub(port: int = 8765) -> None:
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), _HubHandler)
+def serve_service(port: int = 8765, host: str = "127.0.0.1") -> None:
+    """The unified service, foreground/blocking (§17.5).
+
+    `host` defaults to loopback and the CLI refuses anything else without an
+    explicit acknowledgement flag (§17.6) -- boards routinely hold plaintext
+    credentials, so an exposed bind must never be reachable by typo."""
+    registry.clean_legacy_instances()  # §17.7 migration, one-line and idempotent
+    httpd = ThreadingHTTPServer((host, port), _ServiceHandler)
     url = f"http://localhost:{port}/"
-    sys.stdout.write(f"READY {url} hub\n")
+    sys.stdout.write(f"READY {url} service host={host}\n")
     sys.stdout.flush()
     try:
         httpd.serve_forever()

@@ -139,9 +139,12 @@ footer { color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5
 .chat-chip { margin-top:0; font-size:.7rem; padding:.15rem .5rem; text-transform:none;
   letter-spacing:normal; }
 .chat-msgs { max-height:340px; overflow-y:auto; margin-bottom:.5rem; }
-/* --- Hub (M9, docs/SPEC.md §13) -- cards are plain links to each board --- */
-a.hub-card { display:block; text-decoration:none; color:inherit; }
-a.hub-card:hover { border-color:var(--accent); }
+/* --- Directory (M13, docs/SPEC.md §17.4) -- cards are plain links to each
+   registered project; a project whose board.json is gone is shown, not
+   dropped (§17.3), just dimmed and not clickable. --- */
+a.dir-card { display:block; text-decoration:none; color:inherit; }
+a.dir-card:hover { border-color:var(--accent); }
+.dir-missing { opacity:.7; border-style:dashed; }
 /* --- resources block (M11, docs/SPEC.md §15) --- */
 ul.res-list li.res-item { display:flex; align-items:center; gap:.7rem;
   padding:.4rem 0; border-bottom:1px solid var(--border); }
@@ -279,21 +282,32 @@ body.has-nav { max-width:1040px; }
 </div>
 <footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
 <script>
+// Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md
+// §17.4): '' in single-board mode (`painel serve` -> /event, /version), or
+// '/<slug>' under the unified service (-> /<slug>/event, /<slug>/version).
+// Templated server-side: only the server knows which mode it's in.
+const basePath = "";
 async function send(payload) {
   try {
-    await fetch('/event', {method:'POST', headers:{'Content-Type':'application/json'},
+    await fetch(basePath + '/event', {method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify(payload)});
   } catch (e) {}
 }
 function reloadSoon() { knownVersion = null; setTimeout(() => location.reload(), 250); }
 
 // --- Tab hygiene (M10, docs/SPEC.md §14.1) ----------------------------------
-// Duplicate-tab self-close via BroadcastChannel. The channel name is derived
-// client-side from location.port -- stable per INSTANCE (the port is the
-// instance identity, §6.6), not per board path, and needs zero new
-// server-side plumbing (render()/context unchanged). Every page pAInel
-// serves (board pages and the hub) includes this, since both are pages a
-// human might open twice via `painel open`/hub bookmarking.
+// Duplicate-tab self-close via BroadcastChannel. The channel name identifies
+// THE BOARD, not the tab: two tabs of the same board must dedupe, two tabs of
+// DIFFERENT boards must never touch each other.
+//
+// M10 keyed this on location.port, which was correct when one board == one
+// process == one port (§6.6). Under M13's unified service every board shares
+// one port, so a port-keyed channel would make two different boards mutually
+// self-closing -- board B's tab would announce, board A's tab would answer
+// "already open", and B would close itself. The service therefore templates
+// the board's slug into the expression below, while single-board `painel
+// serve` keeps the original port-derived one verbatim, since there the port
+// genuinely still is the instance identity (docs/SPEC.md §17.4).
 (function() {
   if (typeof BroadcastChannel === 'undefined') return;  // graceful no-op on ancient browsers
   const channelName = 'painel-' + (location.port || '80');
@@ -517,7 +531,7 @@ updateWhoseTurn(pendingCount, agentStatus, hasResolved);
 let knownVersion = null;
 async function poll() {
   try {
-    const r = await fetch('/version', {cache:'no-store'});
+    const r = await fetch(basePath + '/version', {cache:'no-store'});
     const data = await r.json();
     if (knownVersion === null) { knownVersion = data.v; }
     else if (data.v !== knownVersion && !isBusy()) { location.reload(); return; }

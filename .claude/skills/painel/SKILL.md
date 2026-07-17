@@ -13,7 +13,8 @@ description: >
 
 pAInel renders a `board.json` as an interactive web page next to the chat. You
 compose typed blocks; the human clicks/types; each interaction is written back to
-the board **and** printed as one JSON line on stdout, which you watch to react.
+the board **and** appended as one JSON line to `<board>.log`, which you watch to
+react.
 
 Use it for any non-trivial, multi-step task — **especially** when the user must
 do something manually (log in somewhere, download a file, confirm a payment).
@@ -28,24 +29,26 @@ Don't use it for one-shot answers or quick chats.
 
 2. **Open** it — one idempotent command, no port bookkeeping needed:
    ```bash
-   painel open              # creates the board if missing, starts the server, opens the browser
+   painel open              # creates the board if missing, starts the service, opens the browser
    ```
-   Calling it again just re-opens the tab if a server is already running for
-   that board — safe to call from anywhere, including directly by the user.
-   Check `painel status` / stop with `painel stop`. If `painel` isn't on PATH,
-   fall back to `python3 -m painel serve board.json --port <N> --open`
-   (foreground) or vendor the single `painel/server.py` into the project.
+   Calling it again just re-opens the tab — safe to call from anywhere,
+   including directly by the user. It registers the project (if new) and prints
+   the board's URL, `http://localhost:8765/<slug>`, where `<slug>` comes from
+   `meta.project`. Check `painel status` / stop with `painel stop`. If `painel`
+   isn't on PATH, fall back to `python3 -m painel serve board.json --port <N>
+   --open` (foreground) or vendor the single `painel/server.py` into the project.
 
-   `painel open` also silently ensures a **hub** is running at the fixed
-   address `http://localhost:8765/` — a page listing every board currently
-   running on the machine, with pending badges and status chips, click-through
-   to each. It's a convenience for the human to bookmark once; you don't need
-   to do anything extra to keep it running or mention it unless asked.
+   One pAInel **service** serves every registered project on the machine, and
+   `http://localhost:8765/` is a **directory** of them all, with pending badges
+   and status chips, click-through to each. It's a convenience for the human to
+   bookmark once; you don't need to do anything extra to keep it running or
+   mention it unless asked.
 
-3. **Watch** for interactions. `painel open` logs the server's stdout to
+3. **Watch** for interactions. Every event for this board is appended to
    `<board>.log` in the project — attach a background monitor to that file,
    filtering to JSON lines (they start with `{`). Each line is one interaction
-   event.
+   event. Only this board's events land there; other projects have their own
+   logs.
 
 ## React to events
 
@@ -105,11 +108,11 @@ hunting for it — pAInel underlines this by generating an anchor id per block
 (`#blk-<id>`):
 
 ```
-👉 http://127.0.0.1:8765/#blk-ap
+👉 http://localhost:8765/<slug>#blk-ap
 ```
 
 This is just a convention (no special pAInel endpoint) — build the URL from the
-port `painel open`/`serve` printed and the block's `id`.
+board URL `painel open` printed and the block's `id`.
 
 ### The chat-pointer convention — don't restate the board in chat
 
@@ -119,7 +122,7 @@ board's content. The board is the single source of truth for state; the chat
 is for conversation and for whatever doesn't have a board representation yet.
 
 ```
-👉 http://127.0.0.1:8765/#blk-q1
+👉 http://localhost:8765/<slug>#blk-q1
 ```
 
 is the whole reply — not a paragraph re-explaining the question you just put
