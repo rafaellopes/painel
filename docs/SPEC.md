@@ -1301,6 +1301,40 @@ rules for blocks whose failure modes have not actually been observed —
 every rule here is earned by a real incident, and that is what keeps the
 signal-to-noise high enough to be worth obeying.
 
+### 20.5 What this does NOT catch (measured, not assumed)
+
+Written **after** implementing and running the linter against the three real
+incidents in §20, because the original acceptance criterion in §9 optimistically
+claimed all three would be flagged. Only **#3** is. That criterion was wrong and
+has been corrected; this section records why, so nobody "fixes" the heuristic
+into uselessness later.
+
+The three incidents are **three different failure modes**, and §20.1's heuristic
+addresses exactly one of them:
+
+| # | Incident | Failure mode | Caught? |
+|---|---|---|---|
+| 1 | "Ter pelo menos 2 contas de condutor de teste…" | **Swallowed payload** — the tick discards a thing the agent needs | ❌ |
+| 2 | "COND-1: Login com condutor… confirmar que as horas estão corretas" | **Misallocated executor** — the agent's own work handed to the human | ❌ |
+| 3 | "Responder às perguntas do README (Draxo numa frase, projetos, email)" | **Answer-requesting phrasing** | ✅ |
+
+Why the other two are left uncaught, deliberately:
+
+- **#1 (swallowed payload)** has no interrogative phrasing at all. Catching it
+  would need a marker like a leading `Ter …`, which also matches legitimate
+  binary preconditions ("Ter o ambiente pronto"). The precision cost is not
+  worth it under §20.1's stated preference.
+- **#2 (misallocated executor)** is not a property of the *text* — it depends on
+  what the agent is capable of doing itself, which no phrasing heuristic can
+  know. A text linter is structurally the wrong instrument here; the guard for
+  this one remains the skill's "Checklist vs tasks/plan" reasoning.
+
+**The linter is a floor, not a ceiling.** A clean `painel lint` means "no
+answer-shaped phrasing was found", not "the block choices are right". If a
+future milestone wants to cover #1 or #2, it needs a *different* mechanism
+(e.g. an explicit `needs:` field the agent declares, making the payload
+machine-checkable), not looser regexes.
+
 ### 20.4 Non-goals for M16
 
 No auto-conversion of a flagged item into a `form`/`question` (the agent
@@ -1332,7 +1366,7 @@ human's own typed input (change requests, chat) — this is about the
 | **M13** | The unified service (§17): one process serving every registered project, `~/.painel/projects.json` registry, `/`+`/<slug>`+`/<slug>/<page>` URL hierarchy, directory replaces the process-listing hub, CLI reshaped around the service | **The agent contract is untouched**: events still land in each board's own `<board>.log`, `board.json` still lives in the project dir, `tail -F <board>.log` still works per project (pinned by test); `painel open` in a fresh dir still Just Works end to end; a board with no process of its own still appears in the directory; foreign service on 8765 fails with a clear message instead of wandering ports; non-loopback bind refused without the explicit ack flag; BroadcastChannel keys on slug (two different boards must never self-close each other) |
 | **M14** | Navigation shell (§18): breadcrumb on every board page, persistent sidebar app-shell with a collapsible project switcher whose per-project pending badges travel across pages, current project+page highlighted | Breadcrumb links resolve (`/`, `/<slug>`, current page as text); the project switcher lists every registered project with correct pending badges matching the directory; single-board `serve` degrades cleanly (no `/` link, switcher shows only the current project); attention bar (this board) and switcher badges (other projects) stay distinct; page-shell chrome only, no block module, directory page unaffected; responsive collapse reuses the existing breakpoint |
 | **M15** | The `upload` block (§19): agent-composed drag/drop/pick zone writing to an agent-chosen `dest_dir` relative to the project, `POST /<slug>/upload`, `file_added` event, plus a global "📎 enviar ficheiros" affordance (`block:null` → `painel-uploads/`) | Dropping files writes them under the resolved dest and emits `file_added` to that board's own `<board>.log` (not silent); path containment refuses a `dest_dir`/filename escaping the project dir (400, no write); filenames sanitized + collision-suffixed never clobber; per-file size cap enforced; the global affordance needs no agent prompt so "where do I put this?" can't arise; loopback-only, no new network surface beyond `/event` |
-| **M16** | Block-choice lint (§20): `painel/lint.py` + `painel lint` CLI + an inline `⚠` at render time for `checklist` items that look like they need an answer | Flags all three real incidents (§20 list) and does NOT flag plain actions (login/download/publish/record) — pinned by test; `painel lint` exits 1 when flagged, 0 when clean; the `⚠` never blocks rendering and its copy points at the per-item ❓; accent-insensitive matching reuses the existing NFKD fold; pure function over a board dict, no block-module hook, no dependencies |
+| **M16** | Block-choice lint (§20): `painel/lint.py` + `painel lint` CLI + an inline `⚠` at render time for `checklist` items that look like they need an answer | Flags **answer-shaped phrasing** (incident #3 and any `?`-ending item) and does NOT flag plain actions (login/download/publish/record) — both directions pinned by test; §20.5 records the two incident types this deliberately does NOT cover and why (widening the markers to force them would trade precision for noise, which §20.1 forbids); `painel lint` exits 1 when flagged, 0 when clean; the `⚠` never blocks rendering and its copy points at the per-item ❓; accent-insensitive matching reuses the existing NFKD fold; pure function over a board dict, no block-module hook, no dependencies |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
