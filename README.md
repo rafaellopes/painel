@@ -92,6 +92,7 @@ Useful companions:
 painel add /path/to/project   # register a project without opening it
 painel remove <slug>          # unregister (never deletes the board file)
 painel status                 # is the service up? where? how many projects?
+painel lint [dir]             # flag checklist items that need an answer, not a tick (exit 1 if any)
 painel stop                   # stop the service
 painel demo                   # see every block type in a showcase board
 painel restart-all            # restart the service (run this after an upgrade)
@@ -201,6 +202,33 @@ also has a persistent global **📎 Enviar ficheiros para o agente** drop zone a
 the bottom (files go to `painel-uploads/`), so there is always somewhere to hand
 over a file the agent didn't explicitly ask for. Each dropped file is written to
 disk and emits a `file_added` event the agent reacts to.
+
+### Catching the wrong block before you see it — `painel lint`
+
+The most common mistake an agent makes composing a board is putting something
+in a **checklist** that isn't a yes/no step: *"Ter pelo menos 2 contas de
+condutor de teste"*, *"Responder às perguntas do README (nome, projetos,
+email)"*. Ticking those tells the agent nothing — the information you were
+supposed to hand over is swallowed by a checkbox. Those should have been a
+`question` or a `form`.
+
+Writing the rule in the skill didn't stop it (twice), so it's mechanical now:
+
+```bash
+painel lint          # exit 1 if anything is flagged, 0 if clean
+```
+
+It flags checklist items that look like they want an *answer* rather than a
+*tick* (ending in `?`, or containing `responder`, `qual`, `quanto`, `definir`,
+`escolher`, `preencher`, `confirmar com`…), and the skill tells the agent to
+run it after composing or updating any board. It's deliberately conservative —
+it would rather miss one than cry wolf, because a noisy linter gets ignored.
+
+If a flagged item still makes it onto the page, it renders with a small inline
+⚠ next to it. Hover it and it tells you what's likely wrong; the fix is the ❓
+button already beside every checklist item — click it, say "this needs an
+answer field", and the agent converts the block. The warning never blocks or
+hides anything; it just makes the mistake visible from both sides.
 
 ## Using it inside Claude Code
 

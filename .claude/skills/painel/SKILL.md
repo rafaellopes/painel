@@ -310,6 +310,45 @@ tried to do this myself right now, would I succeed, or would I be blocked
 on something only the human has?* Blocked-on-something-only-they-have is
 the only case that's really a `checklist`.
 
+## Run `painel lint` after composing or updating a board — always
+
+The two sections above are rules in prose, and prose depends on you
+remembering it. The block-choice mistake they describe recurred on real
+boards **three times** *after* those rules were written. So there is now a
+mechanical check, and running it is **not optional**:
+
+```bash
+painel lint              # the board in the current directory
+painel lint <dir|board.json>
+```
+
+It exits **1** if any `checklist` item looks like it wants an *answer* rather
+than a *tick* (ends with `?`, or contains a marker like `responder`,
+`indicar`, `qual`, `quanto`, `definir`, `escolher`, `preencher`, `dá-me`,
+`confirmar com`), printing each offender with its block id, item id, text and
+the suggested block type. Exit **0** means clean.
+
+**The step:** after you write or update a board — every time, before you tell
+the human it's ready — run `painel lint`. If it exits 1, fix what it flags by
+converting those items to the right block (`question` for one answer, `form`
+for several fields, `choice`/`approval` when the options are known, `upload`
+for files, `tasks`/`plan` when *you* are the one who performs the step — see
+"Checklist vs question/form" and "Checklist vs tasks/plan" above for which is
+which), then re-run until it's clean. A board is not done while `painel lint`
+exits 1.
+
+The linter is deliberately conservative — it prefers missing a bad item to
+crying wolf, so **a clean exit is not a certificate**. It catches the
+answer-requesting *phrasings*; it cannot see that "Ter pelo menos 2 contas de
+condutor de teste" hides a value you need, or that a browser-testable step is
+yours to run. Those are still on you, and the two sections above are still
+the actual reasoning. The linter is the floor, not the ceiling.
+
+If a flagged item still reaches the page, it renders with a small inline ⚠
+whose tooltip tells the human to use the per-item ❓ next to it — which
+arrives to you as a `change_request` with an `item` field. Treat that as the
+signal to convert the item; resolve it like any other change request.
+
 ## Rules of thumb
 
 - Every interactive block needs a stable, unique `id` — you match events by it.
@@ -317,6 +356,8 @@ the only case that's really a `checklist`.
   when there's truly nothing to capture beyond done/not-done (see above).
 - Prefer `choice`/`approval` over open questions when the options are known.
 - After every meaningful step, update the board — stale boards defeat the point.
+- Run `painel lint` after composing/updating a board; fix anything it flags
+  before calling the board done (see above).
 - Leave the board in its final state at the end; it's the session's record.
 - Set `meta.agent_status` ("working"/"waiting"/"idle") so the tab title/favicon/chip
   tell the human whose turn it is without them switching tabs to check.

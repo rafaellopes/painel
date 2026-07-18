@@ -128,6 +128,10 @@ ul.checklist label {{ display:flex; gap:.6rem; align-items:flex-start; cursor:po
 ul.checklist input {{ margin-top:.28rem; width:16px; height:16px; accent-color:var(--accent); flex:none; }}
 ul.checklist li.checked span {{ color:var(--muted); text-decoration:line-through; }}
 ul.checklist .item-cr-btn {{ flex:none; }}
+/* M16 (§20.2): block-choice lint marker. flex:none + align-self so it sits
+   beside the ❓ without disturbing the label's flex:1 or the cr-box's order:3. */
+ul.checklist .lint-warn {{ flex:none; align-self:flex-start; margin-top:.3rem;
+  color:var(--wip); cursor:help; font-size:.9rem; }}
 ul.checklist li .cr-box {{ width:100%; order:3; margin-top:.3rem; }}
 ul.log li {{ padding:.28rem 0; border-bottom:1px solid var(--border); }}
 ul.log li:last-child {{ border-bottom:none; }}

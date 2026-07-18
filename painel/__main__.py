@@ -7,6 +7,7 @@ docs/SPEC.md §17.5), not one process per board:
     python -m painel open    [dir]                # the one command people actually type
     python -m painel add     [dir]                # register without opening
     python -m painel remove  <slug>               # unregister (never deletes the board)
+    python -m painel lint    [dir]                # flag checklist items that need an answer, not a tick
     python -m painel status                       # is the service up, where, how many projects
     python -m painel stop                         # stop the service
     python -m painel restart-all                  # restart the service (run after upgrading)
@@ -27,7 +28,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 
-from . import registry
+from . import lint, registry
 from .server import serve, serve_service, save_board, load_board
 
 DEFAULT_BOARD = ".painel-board.json"
@@ -321,6 +322,35 @@ def cmd_add(target: str) -> int:
     return 0
 
 
+def cmd_lint(target: str) -> int:
+    """Compose-time prevention (M16, docs/SPEC.md §20.2 layer 1). Exit 1 when
+    anything is flagged, 0 when clean -- so the agent (and CI, and a pre-commit
+    hook) can gate on it. The skill instructs the agent to run this after
+    composing or updating a board, which is the point where the mistake is
+    still free to fix: before the human ever sees the board."""
+    board_path = _resolve_board_arg(target)
+    if not os.path.exists(board_path):
+        print(f"erro: não existe nenhum board em {board_path}", file=sys.stderr)
+        return 1
+    try:
+        board = load_board(board_path)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"erro: não consegui ler {board_path}: {exc}", file=sys.stderr)
+        return 1
+    findings = lint.lint_board(board)
+    if not findings:
+        print(f"lint: sem problemas em {board_path}")
+        return 0
+    n = len(findings)
+    print(f"lint: {n} item{'s' if n > 1 else ''} de checklist que parece{'m' if n > 1 else ''} "
+          f"pedir uma resposta em vez de um visto ({board_path}):", file=sys.stderr)
+    for f in findings:
+        print("  " + lint.format_finding(f), file=sys.stderr)
+    print("\nMarcar um destes não entrega nada ao agente. Converte-os em blocos "
+          "'question' (uma resposta) ou 'form' (vários campos).", file=sys.stderr)
+    return 1
+
+
 def cmd_remove(slug: str) -> int:
     """Unregister. NEVER deletes the board file (§17.5) -- the board belongs to
     the project, not to us."""
@@ -456,6 +486,9 @@ def main(argv=None) -> int:
     pa = sub.add_parser("add", help="register a project's board without opening it (for bulk-adding existing projects)")
     pa.add_argument("dir", nargs="?", default=".", help="project directory (or a board.json path)")
 
+    pl = sub.add_parser("lint", help="check a board for checklist items that should be a question/form (exit 1 if any)")
+    pl.add_argument("board", nargs="?", default=".", help="project directory (or a board.json path)")
+
     prm = sub.add_parser("remove", help="unregister a project by slug (never deletes the board file)")
     prm.add_argument("slug")
 
@@ -495,6 +528,8 @@ def main(argv=None) -> int:
         return cmd_open(args.dir, args.port)
     if args.cmd == "add":
         return cmd_add(args.dir)
+    if args.cmd == "lint":
+        return cmd_lint(args.board)
     if args.cmd == "remove":
         return cmd_remove(args.slug)
     if args.cmd == "stop":
