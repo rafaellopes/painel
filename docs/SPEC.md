@@ -1335,6 +1335,31 @@ future milestone wants to cover #1 or #2, it needs a *different* mechanism
 (e.g. an explicit `needs:` field the agent declares, making the payload
 machine-checkable), not looser regexes.
 
+#### Measured precision, and the markers dropped because of it
+
+The first shipped version was run over the author's **real corpus: 59
+checklist items across 7 live boards**. It produced **2 findings, both false
+positives**, both from `escolher`/`escolhe`:
+
+> "…PostHog: funis, coortes, feature flags. **Escolhe** uma e instrumenta um
+> produto teu."
+> "Correr um teste A/B a valer: (1) **escolher** UMA mudança real com
+> impacto…"
+
+In both, choosing is part of the **work being done**, not a value to report
+back — genuinely done/not-done steps. `escolher`/`escolhe` were removed, and
+`definir` with them (same class of verb, and likewise never earned by an
+observed incident). After the change: **59 items, 0 findings**, with the
+incidents still caught. Both real false-positive texts are pinned verbatim as
+negative tests, so re-introducing a marker that flags them fails the suite.
+
+Honest note on confidence: of the surviving markers, only `responder`,
+`confirmar com` and the ends-with-`?` rule were earned by observed incidents.
+The rest are plausible but unmeasured — **drop any of them at the first real
+false positive rather than defending it.** A linter that cries wolf is worse
+than no linter, because it trains the reader to ignore the one time it is
+right.
+
 ### 20.4 Non-goals for M16
 
 No auto-conversion of a flagged item into a `form`/`question` (the agent

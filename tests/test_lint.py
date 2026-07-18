@@ -39,6 +39,21 @@ PLAIN_ACTIONS = [
     "Colocar o ficheiro em ~/Downloads",
 ]
 
+# The two REAL false positives that the first shipped version of this linter
+# produced, found by running it over 59 checklist items across 7 of the
+# author's actual boards (§20.5). Both came from "escolhe(r)", which was
+# dropped as a marker because of them. They are pinned here verbatim: these
+# are not hypotheticals, they are the measured evidence, and re-adding a
+# marker that flags them would be re-introducing a known regression.
+REAL_FALSE_POSITIVES = [
+    ("Ferramentas de product analytics — Amplitude, Mixpanel, PostHog: funis, "
+     "coortes, feature flags. Escolhe uma e instrumenta um produto teu."),
+    ("⭐ Correr um teste A/B a valer (end-to-end), num produto teu: (1) escolher "
+     "UMA mudança real com impacto — ex.: copy do onboarding, botão de upgrade, "
+     "preço; (2) escrever a hipótese e a métrica primária; (3) estimar o tamanho "
+     "de amostra ANTES de arrancar."),
+]
+
 
 def _board(*texts):
     return {
@@ -78,6 +93,18 @@ class HeuristicTest(unittest.TestCase):
     def test_plain_actions_are_never_flagged(self):
         for text in PLAIN_ACTIONS:
             with self.subTest(text=text):
+                self.assertIsNone(lint.check_text(text))
+
+    def test_real_measured_false_positives_stay_unflagged(self):
+        """Regression guard from dogfooding: the first shipped heuristic
+        flagged these two real items (and nothing else) across the author's
+        59 real checklist items -- 2 findings, 0 of them true. In both,
+        choosing is part of the work being done, not a value to report back.
+        A marker that flags either of these is too loose, whatever else it
+        buys (§20.1: false positives are the failure mode that kills
+        adoption)."""
+        for text in REAL_FALSE_POSITIVES:
+            with self.subTest(text=text[:50]):
                 self.assertIsNone(lint.check_text(text))
 
     def test_trailing_question_mark(self):
@@ -145,7 +172,11 @@ class LintBoardTest(unittest.TestCase):
         self.assertEqual(INCIDENT_3, json.loads(json.dumps(f._asdict()))["text"])
 
     def test_board_order_preserved(self):
-        board = _board("Fazer login", "Qual é o IBAN?", "Descarregar o PDF", "Definir o preço")
+        # i4 used to be "Definir o preço"; "definir" was dropped as a marker
+        # (§20.5) so it no longer flags. Swapped for a surviving marker --
+        # what this test pins is ORDER, not which words match.
+        board = _board("Fazer login", "Qual é o IBAN?", "Descarregar o PDF",
+                       "Indicar o email de contacto")
         self.assertEqual(["i2", "i4"], [f.item for f in lint.lint_board(board)])
 
     def test_clean_board_has_no_findings(self):

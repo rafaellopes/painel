@@ -53,14 +53,33 @@ class Finding(NamedTuple):
 # (as in "confirmar com o sócio: X ou Y?") precisely because bare "confirmar"
 # would flag legitimate verification steps ("confirmar que o deploy correu
 # bem"), which is the noise this linter must not produce.
+#
+# REMOVED after measuring against the real corpus (§20.5): "escolher"/"escolhe"
+# and "definir". Running the linter over 59 real checklist items across 7 real
+# boards produced exactly 2 findings, and BOTH were false positives, both from
+# "escolhe(r)":
+#
+#   "…PostHog: funis, coortes, feature flags. Escolhe uma e instrumenta um
+#    produto teu."
+#   "Correr um teste A/B a valer: (1) escolher UMA mudança real com impacto…"
+#
+# In both, choosing is part of the WORK the human does, not a value they must
+# report back -- the item really is a done/not-done step. That is the whole
+# false-positive class §20.1 forbids, measured on real data rather than
+# imagined. "definir" is the same kind of verb (an action as often as a
+# request) and was likewise never earned by a real incident, so it goes with
+# them rather than waiting to misfire.
+#
+# The survivors below are plausible answer-requests, but note honestly that
+# only "responder", "confirmar com" and the ends-with-"?" rule were actually
+# earned by observed incidents; the rest are unmeasured. Drop any of them at
+# the FIRST real false positive -- do not defend them.
 MARKERS = (
     "responder", "responde",
     "indicar", "indica",
     "informar", "informe",
     "qual", "quais",
     "quanto", "quantos",
-    "definir",
-    "escolher", "escolhe",
     "preencher", "preenche",
     "diz-me", "da-me", "envia-me",
     "confirmar com",
