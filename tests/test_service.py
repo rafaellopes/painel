@@ -377,16 +377,28 @@ class RegistryTest(_FakeHomeMixin, unittest.TestCase):
         filenames are genuinely different files -- rewriting the stored path
         to a normalized form could point the service at a path that doesn't
         exist. We compare normalized, we store (and open) what we were
-        given."""
-        path = self._project("Finanças", project="Finanças")
-        nfd = unicodedata.normalize("NFD", path)
-        slug = registry.register(nfd)
+        given.
+
+        The fixture creates the directory with NFD bytes *explicitly*. An
+        earlier version fabricated the NFD string from an NFC directory
+        (`unicodedata.normalize("NFD", path)`) and passed only by accident on
+        macOS, whose filesystem is normalization-insensitive so any form
+        resolves. On Linux -- where CI runs -- that fabricated path had never
+        been created, so os.path.exists() was False and the test failed for a
+        reason unrelated to the behaviour under test. Build the fixture in the
+        form you mean to test; don't rely on the filesystem forgiving you."""
+        nfd_dirname = unicodedata.normalize("NFD", "Finanças")
+        self.assertNotEqual(nfd_dirname, unicodedata.normalize("NFC", "Finanças"))
+        path = self._project(nfd_dirname, project="Finanças")
+        self.assertTrue(os.path.exists(path), "fixture must exist in NFD form")
+
+        slug = registry.register(path)
         stored = registry.load_projects()[slug]["path"]
+        # Verbatim: the stored string is byte-for-byte what we handed in, NOT
+        # rewritten to NFC. On Linux an NFC rewrite would name a *different*,
+        # non-existent file -- which is the whole point of storing verbatim.
+        self.assertEqual(stored, os.path.abspath(path))
         self.assertTrue(os.path.exists(stored))
-        self.assertEqual(
-            unicodedata.normalize("NFC", os.path.realpath(stored)),
-            unicodedata.normalize("NFC", os.path.realpath(path)),
-        )
 
     def test_path_key_folds_symlinks(self):
         path = self._project("real-dir", project="Proj")
