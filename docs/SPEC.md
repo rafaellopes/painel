@@ -1228,6 +1228,91 @@ spinner is enough to not look dead). No resumable/chunked uploads.
 
 ---
 
+## 20. Block-choice lint (M16) — full spec
+
+**Problem this solves — and why documentation already failed.** The most
+common composition mistake is putting something in a `checklist` that isn't
+a yes/no step. It has now happened **three times on real boards**:
+
+1. `"Ter pelo menos 2 contas de condutor de teste"` — ticking it discards
+   the accounts; the agent still doesn't have them.
+2. `"COND-1: Login com condutor… confirmar que as horas estão corretas"` —
+   an agent-executable browser test handed to the human as a checkbox.
+3. `"Responder às perguntas do GitHub profile README (Draxo numa frase,
+   projetos a listar, email)"` — asks for three answers, offers a tick.
+
+The skill was updated **twice** with explicit rules ("Checklist vs
+question/form", "Checklist vs tasks/plan") and the mistake recurred anyway.
+That is the finding this milestone is built on: **a rule that lives only in
+prose depends on the composing model remembering it, and models forget.**
+Prevention has to be mechanical.
+
+### 20.1 What it detects
+
+A **conservative, high-precision** heuristic over `checklist` item text. Flag
+an item when it looks like it wants an *answer* rather than a *tick*:
+
+- the text ends with `?` (after stripping trailing whitespace/markup), or
+- it contains an answer-requesting marker, case- and accent-insensitively:
+  `responder`, `responde`, `indicar`, `indica`, `informar`, `informe`,
+  `qual`, `quais`, `quanto`, `quantos`, `definir`, `escolher`, `escolhe`,
+  `preencher`, `preenche`, `diz-me`, `dá-me`, `da-me`, `envia-me`,
+  `confirmar com` (i.e. "confirmar com o sócio: X ou Y?").
+
+Deliberately **not** flagged: plain actions (`fazer login`, `descarregar`,
+`publicar`, `gravar`, `criar conta`, `largar`, `colocar`) — these are exactly
+what `checklist` is for. Prefer **false negatives over false positives**: a
+noisy linter gets ignored, which would defeat the whole milestone. If you
+are unsure about a marker, leave it out.
+
+Accent-insensitivity matters (`dá-me`/`da-me`, `Responder`/`responder`) —
+fold with the same NFKD→ascii approach `registry.slugify` already uses; do
+not hand-write a second accent table.
+
+### 20.2 Three layers, each catching what the previous one misses
+
+1. **Compose-time — the real prevention.** `painel lint [board]` (CLI, exit
+   code 1 when anything is flagged, 0 when clean) prints each flagged item
+   with its block id, item id, text, and the suggested block type. The skill
+   instructs the agent to run it after composing/updating a board, so the
+   mistake is caught **before the human ever sees it**.
+2. **Render-time — the safety net.** If a flagged item still reaches the
+   page, render a small inline `⚠` next to it with a `title` explaining the
+   likely mis-choice, **and** log the same finding once to stderr (which
+   under the service lands in `~/.painel/service.log`, where the agent can
+   read it). Non-blocking: never refuse to render, never hide the item —
+   a board that won't display is worse than a board with a wrong block.
+3. **One-click escape — already built.** The `⚠` copy points at the existing
+   per-item ❓ (M12): the human clicks it, says "this needs an answer field",
+   and the agent converts it. No new UI for the fix path.
+
+### 20.3 Where the logic lives
+
+A single `painel/lint.py` exposing `lint_board(board) -> list[Finding]`
+(`Finding` = block id, item id, text, reason, suggestion). Called by the CLI
+(`painel lint`) and by `checklist.py`'s render for the inline `⚠`. It is
+**not** a block-module hook and **not** in `server.py` — it is a pure
+function over a board dict, so it is trivially testable and reusable by any
+future consumer (an editor plugin, a pre-commit hook, the Cloud).
+
+Only `checklist` is linted in M16. The architecture should make adding a
+second rule for another block type easy, but do **not** speculatively write
+rules for blocks whose failure modes have not actually been observed —
+every rule here is earned by a real incident, and that is what keeps the
+signal-to-noise high enough to be worth obeying.
+
+### 20.4 Non-goals for M16
+
+No auto-conversion of a flagged item into a `form`/`question` (the agent
+decides the right shape and field breakdown; a mechanical rewrite would
+guess wrong — the linter's job is to *notice*, not to fix). No blocking of
+rendering or of `painel open` (§20.2.2). No LLM-based classification — this
+must run offline, instantly, with zero dependencies (§0). No linting of the
+human's own typed input (change requests, chat) — this is about the
+**agent's** composition choices only.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -1247,6 +1332,7 @@ spinner is enough to not look dead). No resumable/chunked uploads.
 | **M13** | The unified service (§17): one process serving every registered project, `~/.painel/projects.json` registry, `/`+`/<slug>`+`/<slug>/<page>` URL hierarchy, directory replaces the process-listing hub, CLI reshaped around the service | **The agent contract is untouched**: events still land in each board's own `<board>.log`, `board.json` still lives in the project dir, `tail -F <board>.log` still works per project (pinned by test); `painel open` in a fresh dir still Just Works end to end; a board with no process of its own still appears in the directory; foreign service on 8765 fails with a clear message instead of wandering ports; non-loopback bind refused without the explicit ack flag; BroadcastChannel keys on slug (two different boards must never self-close each other) |
 | **M14** | Navigation shell (§18): breadcrumb on every board page, persistent sidebar app-shell with a collapsible project switcher whose per-project pending badges travel across pages, current project+page highlighted | Breadcrumb links resolve (`/`, `/<slug>`, current page as text); the project switcher lists every registered project with correct pending badges matching the directory; single-board `serve` degrades cleanly (no `/` link, switcher shows only the current project); attention bar (this board) and switcher badges (other projects) stay distinct; page-shell chrome only, no block module, directory page unaffected; responsive collapse reuses the existing breakpoint |
 | **M15** | The `upload` block (§19): agent-composed drag/drop/pick zone writing to an agent-chosen `dest_dir` relative to the project, `POST /<slug>/upload`, `file_added` event, plus a global "📎 enviar ficheiros" affordance (`block:null` → `painel-uploads/`) | Dropping files writes them under the resolved dest and emits `file_added` to that board's own `<board>.log` (not silent); path containment refuses a `dest_dir`/filename escaping the project dir (400, no write); filenames sanitized + collision-suffixed never clobber; per-file size cap enforced; the global affordance needs no agent prompt so "where do I put this?" can't arise; loopback-only, no new network surface beyond `/event` |
+| **M16** | Block-choice lint (§20): `painel/lint.py` + `painel lint` CLI + an inline `⚠` at render time for `checklist` items that look like they need an answer | Flags all three real incidents (§20 list) and does NOT flag plain actions (login/download/publish/record) — pinned by test; `painel lint` exits 1 when flagged, 0 when clean; the `⚠` never blocks rendering and its copy points at the per-item ❓; accent-insensitive matching reuses the existing NFKD fold; pure function over a board dict, no block-module hook, no dependencies |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
