@@ -1648,6 +1648,73 @@ image next to text.
 
 ---
 
+## 23. Release & distribution (M4) — full spec
+
+**Problem this solves:** installation is `git clone` + editable install today.
+For an international audience the bar has to be one line — `pipx install
+painel`. This milestone makes the package publishable to PyPI and automates
+the publish, without ever storing a long-lived secret.
+
+### 23.1 Versioning
+
+- Bump to **0.2.0** in `pyproject.toml` **and** `painel/__init__.py`
+  (`__version__`) — keep the two in lockstep (a test may assert they match).
+  The jump from 0.1.0 reflects M13–M18 landing since the initial number.
+- `painel --version` must print it (wire it in `__main__.py` if not already).
+
+### 23.2 Packaging hygiene
+
+- The build is already `hatchling`, `packages = ["painel"]`, **zero runtime
+  dependencies** — keep it that way. `build` and the publish action are
+  build-time/CI tools, never runtime deps.
+- Verify `python -m build` produces a clean **sdist + wheel**, and that the
+  wheel installs into a **fresh venv** and `painel demo` runs from it (this is
+  the M4 acceptance — prove it in CI on a matrix, not just locally).
+- Ensure everything the runtime needs is inside the `painel` package (the demo
+  board is generated in code, so there are no data files to ship; confirm — if
+  any runtime asset lives outside the package, add it to the wheel targets).
+- `README.md`: add the `pipx install painel` / `pip install painel` quick-start
+  at the top; keep the from-source path below it.
+
+### 23.3 Trusted Publishing (OIDC) — the chosen mechanism
+
+**Decision: PyPI Trusted Publishing via GitHub Actions OIDC. No API token is
+ever stored in the repo.** Rationale: boards hold credentials and this project
+is security-first; a long-lived PyPI token in GitHub secrets is exactly the
+kind of standing secret we avoid. OIDC mints a short-lived credential per run.
+
+- Add `.github/workflows/release.yml`, triggered on a pushed tag `v*` (and
+  optionally `workflow_dispatch` for a dry run). It:
+  1. builds sdist + wheel (`python -m build`),
+  2. publishes with `pypa/gh-action-pypi-publish` under
+     `permissions: id-token: write` and `environment: pypi`.
+- The workflow name (`release.yml`) and environment (`pypi`) are **load-bearing
+  identifiers** the human registers in PyPI's pending-publisher form — do not
+  rename them without updating that side.
+- A **release is a git tag** (`v0.2.0`). The workflow, not a human with a
+  token, does the upload.
+
+### 23.4 What the agent does NOT do (the human's part)
+
+Publishing is an **external, irreversible** act tied to the maintainer's
+identity: it claims the name `painel` on PyPI permanently. The implementing
+agent **must not** create a PyPI account, register the trusted publisher, push
+a release tag, or publish. It prepares everything so the publish is a tag away,
+verifies the build + fresh-venv install + workflow validity, keeps CI green,
+and stops there. The maintainer (1) creates the PyPI account, (2) registers the
+pending publisher for `rafaellopes/painel` / `release.yml` / env `pypi`, and
+(3) pushes the `v0.2.0` tag when ready.
+
+### 23.5 Non-goals for M4
+
+No conda/homebrew/distro packaging. No API-token fallback path in the repo
+(OIDC only — if a token is ever needed it lives in the maintainer's hands, not
+the tree). No auto-tagging/auto-release-notes bot. No signing/attestation
+beyond what `gh-action-pypi-publish` provides by default (revisit later if the
+project warrants it).
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
