@@ -1715,13 +1715,104 @@ project warrants it).
 
 ---
 
+## 24. Board export (M3) — full spec
+
+**Problem this solves:** a board is live and ephemeral. There is no way to keep
+a snapshot — to file a finished session, to hand the outcome to someone who
+does not run pAInel, or to print it. Export produces **one self-contained HTML
+file**: open it from disk in any browser, no server, no JS, no network.
+
+### 24.1 The endpoint
+
+- `GET /<slug>/export` (service) and `GET /export` (single-board), added
+  alongside `/version`/`/asset` in **both** `do_GET` handlers, deriving the
+  board the same way `/event` does.
+- Returns `text/html; charset=utf-8` with `Content-Disposition: attachment;
+  filename="<slug>.html"` (single-board: the project dirname, or `painel`). A
+  snapshot, downloaded.
+- Read-only GET, loopback, no new network surface.
+
+### 24.2 It is a render *mode*, not a second renderer
+
+Export MUST reuse the existing block pipeline (`_render_one` → `_block_html` →
+`_wrap_block`), gated by `export: True` in the render `ctx` — the same
+"one rendering path" discipline as M17's `render_block` (§21.5). **Never fork a
+parallel HTML generator** (it would drift from the live look). Export mode
+changes exactly these things:
+
+- **No JS, no auto-refresh.** Omit the `<script>` and the meta-refresh
+  entirely. The file is static.
+- **CSS stays inline.** `page.py` already emits CSS in a `<style>` block (not
+  external) — reuse it as-is, plus an `@media print` refinement. No external
+  fonts/URLs of any kind.
+- **All pages, flattened.** A multi-page board (§11) has no nav without JS;
+  render every page in `_pages(board)` order (Home first), each under its page
+  heading as a section. The live attention bar is omitted (a static snapshot
+  has no "waiting on you" *action*; the pending state is still visible in the
+  blocks themselves).
+- **Interactive controls stripped.** No per-block ✎ buttons, no global
+  "Request a change"/"Send files" affordances, no `upload` drop-zones, no
+  `question` submit inputs. Show **state**: an answered question shows its
+  answer; an open one shows the prompt marked open; a `checklist` shows its
+  checked/unchecked items statically; an `upload` shows its listed files. The
+  generic `_wrap_block` gates the ✎/needs-user chrome on `not export`.
+- **Collapsed force-expanded.** M17 `collapsed` (§21.3) uses `<details>`; a
+  report should hide nothing — render it open (or plain) in export so all
+  content prints.
+- **Hero / group / phase preserved.** These are CSS-only, so they survive
+  export unchanged — that is the payoff of keeping M17 CSS-only.
+
+### 24.3 Images become self-contained (the one new transform)
+
+A standalone file has no `/asset` endpoint, so an `image` block (§22) whose
+`src` is a project-relative path is **inlined as a `data:` URI** in export
+mode: read the local file through the **same containment as §22.3**
+(realpath-contained, image-extension whitelist), encode it (base64, or the SVG
+text), and emit `src="data:<content-type>;base64,…"`. A `data:` src passes
+through unchanged. A remote/refused src stays the alt-fallback. A referenced
+file that is missing or escapes the project dir renders the alt fallback —
+**never break, never embed out-of-project bytes**. Export can only embed what
+`/asset` would have served; the security model holds.
+
+### 24.4 Threads and log (the record)
+
+Below the blocks, export appends two report sections so the file is a complete
+record (this is the M3 acceptance "includes answered states + threads + log"):
+
+- **Open change requests** (§12.4) — the same threads the live board shows,
+  rendered static.
+- **Event log** — the board's `<board>.log` (§17.2.2) as a readable table
+  (time · event · block · detail). This is what makes the export an audit
+  trail of the session. If the log is huge, show the last N with a visible
+  "showing last N of M" line — **never silently truncate**.
+
+### 24.5 The footer affordance
+
+Add an **"Export"** link to the footer of every live board page, near pAInel's
+footer line and the existing global affordances (§12.3/§19.3). It points at
+`basePath + '/export'` — a plain link that downloads the snapshot.
+
+### 24.6 Non-goals for M3
+
+- No server-side PDF — print-to-PDF from the browser is the path, and
+  `@media print` makes it clean.
+- No JS in the output at all — not even collapsible toggles; a report is
+  static.
+- No exporting the directory or other projects — one board per export.
+- One-way only — you do not import an exported file back into a board.
+- Only `image` blocks inline as data URIs (they are the visual primitive);
+  `resources`/`upload` items render as their listed names/paths, same as live —
+  export does not embed arbitrary uploaded binaries.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
 |---|---|---|
 | **M1** | Refactor to `blocks/` registry + `page.py`; add `"protocol": 1`; test suite + CI | Golden HTML identical (modulo the protocol field); all §8 tests green; `painel demo` unchanged to the eye |
 | **M2** | Batch-1 blocks: countdown, file_drop, rating, table, links, gauge (+ `/upload`) | Each passes §5.4 DoD; demo board shows all six; skill updated |
-| **M3** | Board export: `GET /export` → single-file HTML report (inline CSS, no JS, print-friendly); "Exportar" link in footer | Opens standalone in a browser from disk; includes answered states + threads + log |
+| **M3** | Board export (§24): `GET /<slug>/export` → single-file HTML report (inline CSS, no JS, print-friendly), a render *mode* not a second renderer; "Export" link in footer | Opens standalone from disk with **zero network requests** (images inlined as `data:` URIs via §22.3 containment); all pages flattened in order; answered states + open change-request threads + event log all present; collapsed blocks shown expanded; no interactive control (✎/submit/upload/request-change) in the output; an image escaping the project dir or of a non-image type is NOT embedded (alt fallback), pinned by test; a board using none of image/collapsed/pages still exports and opens standalone; zero dependencies |
 | **M4** | PyPI release `painel` 0.2.0 (`pipx install painel`) | Fresh machine: `pipx install painel && painel demo` works |
 | **M5** | Whose-turn signal (§10): dynamic `<title>`, favicon, header chip, browser notification, `meta.agent_status` protocol field | Title/favicon change correctly across all 4 states in a manual + scripted check; notification fires only on 0→N transition while hidden; existing boards without `agent_status` still render (defaults to `working`) |
 | **M6** | Multi-page navigation (§11): `page` field, sidebar/dropdown nav with pending badges, attention bar spans pages | Board with no `page` fields renders identically to pre-M6 (no nav at all) — pinned by test; board with 2+ pages shows nav, badges match `_needs_user()` counts, anchor links cross pages correctly |
