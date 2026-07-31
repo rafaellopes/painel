@@ -72,11 +72,17 @@ from another can use pAInel.
 
 ## Quick start
 
-Just Python 3 (standard library only, no runtime dependencies).
+Just Python 3.10+ (standard library only, no runtime dependencies).
 
 ```bash
-pip install -e .          # or: pipx install .  /  see "Installing" below
+pipx install painel       # recommended — an isolated, always-available CLI
+# or
+pip install painel
 ```
+
+Prefer `pipx` so `painel` is on your `PATH` without touching any project's
+environment. Working from a clone instead? See [Installing](#installing) for the
+editable / from-source path.
 
 Then, in any project directory, **one command**:
 
@@ -291,8 +297,13 @@ event stream:
 
 ## Installing
 
+The one-liner is `pipx install painel` (or `pip install painel`) — see
+[Quick start](#quick-start). Everything below is for hacking on pAInel from a
+**clone** instead of the published package.
+
 pAInel has zero runtime dependencies, but `pip install` on newer macOS/Homebrew
-Python refuses system-wide installs (PEP 668). The clean way:
+Python refuses system-wide installs (PEP 668). The clean way to run an editable
+checkout:
 
 ```bash
 python3 -m venv ~/.painel-venv
@@ -301,7 +312,7 @@ mkdir -p ~/.local/bin
 ln -sf ~/.painel-venv/bin/painel ~/.local/bin/painel   # make sure ~/.local/bin is on PATH
 ```
 
-Or, if you have `pipx`: `pipx install /path/to/painel`.
+Or, if you have `pipx`: `pipx install --editable /path/to/painel`.
 
 ## Board schema
 
@@ -348,8 +359,9 @@ Board phase: `meta.phase` ∈ `exploring`, `deciding`, `executing`, `done`.
 
 ## Status
 
-Early but working. v0.1 — the core protocol and all block types are implemented
-and tested. Feedback and contributions welcome.
+Early but working. **v0.2.0** — first PyPI release; the core protocol and all
+block types are implemented and tested. See [CHANGELOG.md](CHANGELOG.md).
+Feedback and contributions welcome.
 
 ## License
 

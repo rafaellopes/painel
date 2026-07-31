@@ -18,3 +18,48 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Run tests (stdlib unittest, zero dependencies)
         run: python -m unittest discover -v
+
+  # M4 acceptance (docs/SPEC.md §23.2): prove the build -> install -> run chain
+  # on every supported Python. We cannot run the real `pipx install painel`
+  # until the package is published, so we build the wheel, install it into a
+  # FRESH venv (no source tree on the path), and confirm `painel demo` actually
+  # serves a page. This is the CI stand-in for "fresh machine: pipx install
+  # painel && painel demo works".
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build sdist + wheel
+        run: |
+          python -m pip install --upgrade build
+          python -m build
+      - name: Install the wheel into a fresh venv and smoke-test `painel demo`
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/fresh
+          /tmp/fresh/bin/pip install --upgrade pip
+          # Install ONLY the built wheel — never the source tree.
+          /tmp/fresh/bin/pip install dist/*.whl
+          # `painel --version` must work through the installed entry point.
+          test "$(/tmp/fresh/bin/painel --version)" = "painel 0.2.0"
+          # Serve the demo board from a throwaway dir on a throwaway port and
+          # confirm it returns a rendered HTML page.
+          workdir="$(mktemp -d)"
+          cd "$workdir"
+          /tmp/fresh/bin/painel demo --port 8791 > demo.log 2>&1 &
+          demo_pid=$!
+          ok=0
+          for i in $(seq 1 50); do
+            if curl -fsS "http://127.0.0.1:8791/" -o page.html; then ok=1; break; fi
+            sleep 0.2
+          done
+          kill "$demo_pid" 2>/dev/null || true
+          test "$ok" = "1"
+          grep -q "pAInel" page.html
+          echo "OK: wheel installed in a fresh venv and 'painel demo' served a page ($(wc -c < page.html) bytes)."

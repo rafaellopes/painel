@@ -28,7 +28,7 @@ import urllib.error
 import urllib.request
 import webbrowser
 
-from . import lint, registry
+from . import __version__, lint, registry
 from .server import serve, serve_service, save_board, load_board
 
 DEFAULT_BOARD = ".painel-board.json"
@@ -516,6 +516,7 @@ def cmd_install_skill(project_dir: str) -> int:
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="painel", description="pAInel — second interface for CLI agents")
+    p.add_argument("--version", action="version", version=f"painel {__version__}")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     po = sub.add_parser("open", help="register this project (if new), start the service (if needed), open the board — the one command to remember")

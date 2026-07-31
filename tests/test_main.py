@@ -128,5 +128,30 @@ class InstallSkillTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(src, "SKILL.md")))
 
 
+class VersionTest(unittest.TestCase):
+    """M4 (SPEC.md §23.1): the version lives in two places -- pyproject.toml's
+    [project].version and painel.__version__ -- and they must never drift.
+    A release is a git tag whose number the human reads off pyproject; if
+    __version__ disagreed, `painel --version` would lie. Pin both to the same
+    string here so a bump that touches only one file fails CI immediately."""
+
+    def _pyproject_version(self) -> str:
+        # tomllib is stdlib from 3.11; parse the one line by hand so this test
+        # keeps working on 3.10 (bottom of the support matrix) with zero deps.
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "pyproject.toml"), encoding="utf-8") as fh:
+            for line in fh:
+                stripped = line.strip()
+                if stripped.startswith("version") and "=" in stripped:
+                    return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+        self.fail("no version line found in pyproject.toml")
+
+    def test_pyproject_and_dunder_version_match(self):
+        self.assertEqual(self._pyproject_version(), cli.__version__)
+
+    def test_version_is_the_expected_release(self):
+        self.assertEqual(cli.__version__, "0.2.0")
+
+
 if __name__ == "__main__":
     unittest.main()
