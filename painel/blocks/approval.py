@@ -17,6 +17,12 @@ def render(block: dict, ctx: dict) -> str:
             f'<div class="card answered"><h3>Approval</h3><p>{prompt}</p>'
             f'<div class="answer">Decision: {d}{extra}</div></div>'
         )
+    # Export (M3, §24.2): no approve/reject controls -- show the open STATE.
+    if (ctx or {}).get("export"):
+        return (
+            f'<div class="card"><h3>Approval</h3><p>{prompt}</p>'
+            f'<div class="answer muted">Awaiting decision</div></div>'
+        )
     return (
         f'<div class="card"><h3>Approval</h3><p>{prompt}</p>'
         f'<textarea id="cm-{bid}" data-orig="" placeholder="Comment (optional)"></textarea>'

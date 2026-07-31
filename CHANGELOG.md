@@ -3,6 +3,17 @@
 All notable changes to pAInel are recorded here. Versions follow
 [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Board export (M3, §24)** — every live board page gains an **Export** link
+  (footer) that downloads a self-contained static HTML snapshot: `GET /export`
+  (single-board) / `GET /<slug>/export` (service). One file, opens from disk
+  with **zero network requests** — inline CSS, no JS, all pages flattened,
+  images inlined as `data:` URIs through the same §22.3 containment, plus a
+  report section with open change requests and the event log. Print-friendly
+  (`@media print`). It is a render *mode* reusing the live block pipeline, never
+  a second renderer; zero dependencies.
+
 ## 0.2.0 — first PyPI release
 
 - **Published to PyPI** — `pipx install painel` / `pip install painel` now work

@@ -105,6 +105,7 @@ def _shell(title: str, cards: str) -> str:
         status_chip="",
         cr_global="",  # host-app chrome, not a board -- no change-request affordance
         upload_global="",  # ...and no global upload affordance either (M15, §19.3)
+        footer_export="",  # M3 (§24.5): the directory is not a board -- nothing to export
     )
 
 

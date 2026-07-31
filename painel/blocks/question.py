@@ -14,6 +14,13 @@ def render(block: dict, ctx: dict) -> str:
             f'<div class="card answered"><h3>Question</h3><p>{prompt}</p>'
             f'<div class="answer">Answer: {e(block.get("answer"))}</div></div>'
         )
+    # Export (M3, §24.2): no submit input -- show the open STATE (prompt marked
+    # open), not an interactive control that a static file can't drive.
+    if (ctx or {}).get("export"):
+        return (
+            f'<div class="card"><h3>Question</h3><p>{prompt}</p>'
+            f'<div class="answer muted">Awaiting answer</div></div>'
+        )
     return (
         f'<div class="card"><h3>Question</h3><p>{prompt}</p>'
         f'<textarea id="ta-{bid}" data-orig="" placeholder="Type your answer…"></textarea>'

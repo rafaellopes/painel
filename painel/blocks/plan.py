@@ -13,6 +13,37 @@ def render(block: dict, ctx: dict) -> str:
     done = sum(1 for it in active if it.get("status") == "done")
     total = len(active)
     pct = int(done / total * 100) if total else 0
+    # Export (M3, §24.2): no per-step action buttons, no edit/comment inputs --
+    # a static list showing each step's status and any existing thread messages.
+    if (ctx or {}).get("export"):
+        erows = []
+        for it in items:
+            st = it.get("status", "pending")
+            text = e(it.get("text", ""))
+            tc = "done-text" if st == "done" else ("skip-text" if st == "skipped" else "")
+            thread = it.get("thread", [])
+            thread_msgs = "".join(
+                f'<div class="thread-msg {e(m.get("from",""))}">'
+                f'<b>{"You" if m.get("from") == "user" else "Agent"}:</b> '
+                f'{md_inline(e(m.get("text","")))}</div>'
+                for m in thread
+            )
+            thread_html = (f'<div class="plan-thread"><div class="thread-msgs">'
+                           f'{thread_msgs}</div></div>') if thread else ""
+            erows.append(
+                f'<li class="plan-item"><div class="plan-row">'
+                f'<span class="dot {e(st)}"></span>'
+                f'<span class="plan-text {tc}">{md_inline(text)}</span>'
+                f'</div>{thread_html}</li>'
+            )
+        title = e(block.get("title", "Plan"))
+        return (
+            f'<div class="card"><h3>{title}</h3>'
+            f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div></div>'
+            f'<ul class="plan-items">{"".join(erows)}</ul>'
+            f'<div class="muted small">{done}/{total} done'
+            f'{" · " + str(len(items) - total) + " skipped" if len(items) > total else ""}</div></div>'
+        )
     rows = []
     for idx, it in enumerate(items):
         iid = e(it.get("id", ""))

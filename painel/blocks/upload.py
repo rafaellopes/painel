@@ -73,6 +73,18 @@ def render(block: dict, ctx: dict) -> str:
     directory = block.get("directory", False)
     files = block.get("files", [])
 
+    # Export (M3, §24.2): no drop zone / file input -- a snapshot just lists the
+    # files that were uploaded (§24.6: uploaded binaries are NOT embedded, only
+    # their listed names/paths, same as live).
+    if (ctx or {}).get("export"):
+        card_cls = "card upload-card answered" if files else "card upload-card"
+        return (
+            f'<div class="{card_cls}">'
+            f'<p>{md_inline(e(prompt))}</p>'
+            f'{_files_html(block)}'
+            f'</div>'
+        )
+
     attrs = []
     if multiple:
         attrs.append("multiple")

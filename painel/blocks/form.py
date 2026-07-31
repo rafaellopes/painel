@@ -17,6 +17,18 @@ def render(block: dict, ctx: dict) -> str:
             for f in block.get("fields", [])
         )
         return f'<div class="card answered"><h3>Form</h3><p>{prompt}</p>{rows}</div>'
+    # Export (M3, §24.2): no inputs/submit -- show each field's label and its
+    # current value (or —) statically, marked as awaiting submission.
+    if (ctx or {}).get("export"):
+        rows = "".join(
+            f'<div class="answer">{e(f.get("label", ""))}: '
+            f'{e(f.get("value", "")) or "—"}</div>'
+            for f in block.get("fields", [])
+        )
+        return (
+            f'<div class="card"><h3>Form</h3><p>{prompt}</p>{rows}'
+            f'<div class="answer muted">Awaiting submission</div></div>'
+        )
     fields = []
     for f in block.get("fields", []):
         fid = e(f.get("id", ""))

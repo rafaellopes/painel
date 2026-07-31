@@ -370,7 +370,7 @@ body.phase-done .page-main {{ opacity:.85; filter:saturate(.72); }}   /* subtle 
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
 {cr_global}
 {upload_global}
-<footer>p<span style="color:var(--accent)">AI</span>nel · your agent's second interface</footer>
+<footer>p<span style="color:var(--accent)">AI</span>nel · your agent's second interface{footer_export}</footer>
 <script>
 // Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md
 // §17.4): '' in single-board mode (`painel serve` -> /event, /version), or
@@ -659,3 +659,61 @@ async function poll() {{
 setInterval(poll, 1500);
 </script>
 </body></html>"""
+
+
+# --------------------------------------------------------------------------- #
+# Board export (M3, docs/SPEC.md §24)                                          #
+# --------------------------------------------------------------------------- #
+# Export is a render *mode*, not a second renderer (§24.2): the per-block
+# pipeline (server._block_html -> _wrap_block) is reused verbatim, gated by
+# `export: True` in the ctx. Only the PAGE SHELL differs, and it reuses this
+# same CSS so the exported snapshot looks identical to the live board -- never
+# a divergent stylesheet. Derived by splitting _PAGE (rather than duplicating
+# ~300 lines of CSS) so the two can never drift; the doubled `{{`/`}}` braces
+# survive because _EXPORT_PAGE is `.format()`-ed exactly like _PAGE.
+_CSS = _PAGE.split("<style>", 1)[1].split("</style>", 1)[0]
+
+# The only export-specific CSS: a print refinement (§24.2 -- print-to-PDF is
+# the M3 PDF path, §24.6) plus the flattened-page section headers and the
+# event-log table. Doubled braces because this rides through `.format()`.
+_EXPORT_CSS = """
+/* --- Export mode (M3, docs/SPEC.md §24) -- a static, print-friendly snapshot.
+   No JS, no attention bar, no interactive chrome; every page flattened into a
+   section, plus the report sections (open change requests + event log). --- */
+body.export {{ max-width:860px; }}
+.export-page {{ margin-bottom:2.2rem; }}
+.export-page > .export-page-title {{ font-size:1rem; color:var(--text);
+  border-bottom:1px solid var(--border); padding-bottom:.35rem; margin:1.4rem 0 1rem;
+  text-transform:none; letter-spacing:normal; }}
+.export-report {{ margin-top:2.4rem; }}
+table.export-log {{ width:100%; border-collapse:collapse; font-size:.8rem; }}
+table.export-log th, table.export-log td {{ text-align:left; padding:.32rem .55rem;
+  border-bottom:1px solid var(--border); vertical-align:top; word-break:break-word; }}
+table.export-log th {{ color:var(--muted); text-transform:uppercase; font-size:.66rem;
+  letter-spacing:.06em; }}
+table.export-log td.log-time {{ color:var(--muted); white-space:nowrap; }}
+.export-log-note {{ color:var(--muted); font-size:.75rem; margin-top:.5rem; }}
+@media print {{
+  body.export {{ background:#fff; color:#000; max-width:none; padding:0; }}
+  .card {{ break-inside:avoid; }}
+  a[href] {{ color:inherit; text-decoration:none; }}
+}}
+"""
+
+# The export page shell (§24.2): NO <script>, NO meta-refresh, NO favicon, NO
+# attention/poll -- a static file that opens from disk with zero network
+# requests. Same `.format()` contract as _PAGE; placeholders are only the few
+# static values export needs.
+_EXPORT_PAGE = ("""<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>""" + _CSS + _EXPORT_CSS + """</style></head><body class="export">
+<header>
+  <h1>{title}</h1>
+  <div class="metaline">{metaline}</div>
+</header>
+{body}
+<footer>p<span style="color:var(--accent)">AI</span>nel · exported snapshot · static, no server</footer>
+</body></html>""")

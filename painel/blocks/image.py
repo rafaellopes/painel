@@ -74,9 +74,11 @@ def _fallback(alt: str, reason: str) -> str:
 
 
 def render(block: dict, ctx: dict) -> str:
+    ctx = ctx or {}
     src = block.get("src") or ""
     alt = block.get("alt") or ""  # REQUIRED per spec; render safely if absent
-    base_path = ctx.get("base_path", "") if ctx else ""
+    base_path = ctx.get("base_path", "")
+    export = bool(ctx.get("export"))  # M3 (§24.3): inline as a data: URI
 
     # Remote/missing → the alt fallback box, never an <img> that would fetch.
     if not src:
@@ -84,9 +86,23 @@ def render(block: dict, ctx: dict) -> str:
     if _is_remote(src):
         return _fallback(alt, STRINGS["remote"])
 
-    resolved = _resolve_src(src, base_path)
-    if resolved is None:  # defensive: any src _resolve_src declined
-        return _fallback(alt, STRINGS["remote"])
+    if export and not _is_data_uri(src):
+        # M3 (§24.3): a standalone file has no /asset endpoint, so a
+        # project-relative src is inlined as `data:<ct>;base64,…`, read through
+        # the SAME §22.3 containment (realpath + images-only whitelist) via the
+        # `inline_asset` callable server.py threads into ctx -- so export can
+        # only embed what /asset would have served. An escaping/non-image/
+        # missing file returns None here and falls back to the alt, never
+        # embedding out-of-project bytes. A `data:` src (handled below) passes
+        # through untouched.
+        inline = ctx.get("inline_asset")
+        resolved = inline(src) if inline else None
+        if resolved is None:
+            return _fallback(alt, STRINGS["missing"])
+    else:
+        resolved = _resolve_src(src, base_path)
+        if resolved is None:  # defensive: any src _resolve_src declined
+            return _fallback(alt, STRINGS["remote"])
 
     # Sizing (§22.4): default responsive max-width:100% (from CSS) so the image
     # never overflows its column; an optional cap + object-fit are inline style.
@@ -102,14 +118,20 @@ def render(block: dict, ctx: dict) -> str:
     # `onerror` swaps in the fallback box for an asset that 404s / fails to
     # decode at load time (§22.4: a missing/failed image shows the alt, not a
     # broken-image glyph). Pure inline DOM swap — no page-level JS needed.
-    fallback_html = e(
-        f'<div class="img-fallback-box"><span class="img-fallback-alt">{e(alt)}</span>'
-        f'<span class="img-fallback-note small muted">{e(STRINGS["missing"])}</span></div>'
-    )
-    img = (
-        f'<img src="{e(resolved)}" alt="{e(alt)}" loading="lazy"{style_attr} '
-        f'onerror="this.onerror=null;this.outerHTML=\'{fallback_html}\'">'
-    )
+    # Export (§24.2/§24.6) emits NO JS at all, not even this passive handler:
+    # the src is an already-inlined data: URI that can't 404, so the fallback
+    # swap is moot; dropping it keeps the snapshot script-free.
+    if export:
+        img = f'<img src="{e(resolved)}" alt="{e(alt)}" loading="lazy"{style_attr}>'
+    else:
+        fallback_html = e(
+            f'<div class="img-fallback-box"><span class="img-fallback-alt">{e(alt)}</span>'
+            f'<span class="img-fallback-note small muted">{e(STRINGS["missing"])}</span></div>'
+        )
+        img = (
+            f'<img src="{e(resolved)}" alt="{e(alt)}" loading="lazy"{style_attr} '
+            f'onerror="this.onerror=null;this.outerHTML=\'{fallback_html}\'">'
+        )
 
     caption = block.get("caption")
     cap_html = (

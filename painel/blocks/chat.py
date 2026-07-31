@@ -51,6 +51,16 @@ def render(block: dict, ctx: dict) -> str:
     # ('"<script>alert(1)</script>' payload, docs/SPEC.md §8.4) can assert
     # "no raw <script" in a block's rendered markup without a block-level
     # false positive from the app's own (non-user) markup.
+    # Export (M3, §24.2): no compose box / send button -- a static transcript
+    # of the conversation as it stands.
+    if isinstance(ctx, dict) and ctx.get("export"):
+        return (
+            f'<div class="card chat-card">'
+            f'<h3>{title}{chip_html}</h3>'
+            f'<div class="thread-msgs chat-msgs" id="chat-msgs-{bid}">{msgs_html}</div>'
+            f'</div>'
+        )
+
     return (
         f'<div class="card chat-card">'
         f'<h3>{title}{chip_html}</h3>'

@@ -28,6 +28,23 @@ def _lint_marker(block: dict, item: dict) -> str:
 def render(block: dict, ctx: dict) -> str:
     bid = e(block.get("id", ""))
     items = block.get("items", [])
+    # Export (M3, §24.2): static checked/unchecked items -- no checkbox input,
+    # no per-item ❓/lint chrome (a snapshot has no action to drive).
+    if (ctx or {}).get("export"):
+        rows = []
+        for it in items:
+            checked = it.get("checked")
+            cls = "checked" if checked else ""
+            mark = "☑" if checked else "☐"
+            rows.append(
+                f'<li class="{cls}"><span>{mark} '
+                f'{md_inline(e(it.get("text", "")))}</span></li>'
+            )
+        title = e(block.get("title", "To do (manual)"))
+        return (
+            f'<div class="card"><h3>{title}</h3>'
+            f'<ul class="checklist">{"".join(rows)}</ul></div>'
+        )
     rows = []
     for it in items:
         iid = e(it.get("id", ""))

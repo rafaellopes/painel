@@ -29,6 +29,7 @@ global JS live in painel/page.py. See docs/SPEC.md for the full contract.
 """
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -40,7 +41,7 @@ from urllib.parse import urlparse, parse_qs, quote, unquote
 from . import directory, registry
 from .blocks import REGISTRY, group as _group
 from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
-from .page import _PAGE, CR_GLOBAL_HTML, UPLOAD_GLOBAL_HTML
+from .page import _PAGE, _EXPORT_PAGE, CR_GLOBAL_HTML, UPLOAD_GLOBAL_HTML
 
 # M17 (docs/SPEC.md §21.4): the four phases meta.phase may carry, and the quiet
 # header pill each shows. Any other value (or absence) means "no phase" -> the
@@ -122,7 +123,8 @@ def _collapse_summary(b: dict) -> str:
     return "Details"
 
 
-def _wrap_block(b: dict, inner: str, is_pending: bool, hero_used: list) -> str:
+def _wrap_block(b: dict, inner: str, is_pending: bool, hero_used: list,
+                export: bool = False) -> str:
     """The ONE generic per-block wrapper (docs/SPEC.md §6.5) -- every block,
     top-level or nested inside a `group`, goes through exactly this: the
     `#blk-<id>` anchor, the needs-user marker, the ✎ change-request box, and now
@@ -131,10 +133,16 @@ def _wrap_block(b: dict, inner: str, is_pending: bool, hero_used: list) -> str:
 
     A board using none of M17 renders byte-for-byte as before: with no hero and
     no collapse this is `<div id="blk-x"[ class="needs-user"]>{inner}{cr}</div>`,
-    exactly the pre-M17 string."""
+    exactly the pre-M17 string.
+
+    Export mode (M3, §24.2) gates the live-only chrome on `not export`, in this
+    ONE shared wrapper: no ✎ change-request box, no "waiting on you" needs-user
+    marker (a static snapshot has no action to take -- the pending STATE still
+    shows inside the block), and a `collapsed` block is force-expanded so a
+    report hides nothing (§24.2). hero (CSS-only) survives unchanged."""
     bid = b.get("id", "")
     classes = []
-    if is_pending:
+    if is_pending and not export:
         classes.append("needs-user")
     # hero (§21.2): at most one per page; the FIRST marked block wins, the rest
     # fall back to normal. hero_used is a shared 1-element list so the budget is
@@ -143,11 +151,12 @@ def _wrap_block(b: dict, inner: str, is_pending: bool, hero_used: list) -> str:
         classes.append("hero")
         hero_used[0] = True
     cls = f' class="{" ".join(classes)}"' if classes else ""
-    cr = _change_request_box_html(bid)
+    cr = "" if export else _change_request_box_html(bid)
     # collapsed (§21.3): body behind native <details>. A block pending on the
     # human is NEVER collapsed even if marked -- you cannot fold away a question
-    # and still expect it answered (force-expand + test).
-    if b.get("collapsed") and not is_pending:
+    # and still expect it answered (force-expand + test). In export it is ALWAYS
+    # force-expanded (§24.2): a report must print all its content.
+    if b.get("collapsed") and not is_pending and not export:
         summary = e(_collapse_summary(b))
         body = (f'<details class="blk-collapse" data-key="{e(bid)}">'
                 f'<summary>{summary}</summary>{inner}{cr}</details>')
@@ -674,7 +683,170 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
         status_chip=e(chip_text),
         cr_global=CR_GLOBAL_HTML,
         upload_global=UPLOAD_GLOBAL_HTML,
+        # M3 (§24.5): a plain "Export" link in the footer of every live board
+        # page, pointing at basePath + '/export' -- downloads the static
+        # snapshot. base_path is '' single-board, '/<slug>' under the service.
+        footer_export=f' · <a href="{e(base_path)}/export">⬇ Export</a>',
     )
+
+
+# --------------------------------------------------------------------------- #
+# Board export (M3, docs/SPEC.md §24)                                          #
+# --------------------------------------------------------------------------- #
+def _asset_data_uri(board_path: str, relpath: str):
+    """A project-relative image `relpath` encoded as a `data:` URI, or None
+    when it must NOT be embedded (§24.3). Reuses read_asset() verbatim -- i.e.
+    the SAME §22.3 containment (realpath-contained + images-only whitelist) the
+    live `/asset` endpoint uses -- so export can only ever embed what `/asset`
+    would have served: an escaping/non-image/missing src returns None here and
+    the image block falls back to its alt, never embedding out-of-project bytes.
+    No remote fetch, ever (a remote src is refused before this is even called).
+
+    base64 is stdlib, so this holds the zero-dependency line."""
+    content, ctype = read_asset(board_path, relpath)
+    if content is None:
+        return None
+    return f"data:{ctype};base64,{base64.b64encode(content).decode('ascii')}"
+
+
+_EXPORT_LOG_LIMIT = 500  # last-N cap for a huge log (§24.4) -- never silent
+
+
+def _short(value, limit: int = 200) -> str:
+    """Render one event-payload value compactly for the log table's detail
+    column -- JSON for non-scalars, truncated so a giant blob can't blow out
+    the row. Raw (the caller e()-escapes)."""
+    if isinstance(value, str):
+        s = value
+    else:
+        s = json.dumps(value, ensure_ascii=False)
+    s = s.replace("\n", " ").strip()
+    return s[:limit] + "…" if len(s) > limit else s
+
+
+def _export_log_html(board_path: str) -> str:
+    """The board's `<board>.log` (§17.2.2) rendered as a readable static table
+    (time · event · block · detail) -- the audit trail that makes the export a
+    complete record (§24.4). A huge log shows the last N with a visible
+    "showing last N of M" line; it is NEVER silently truncated. Absent/empty
+    log -> nothing rendered (a board can have no interactions yet)."""
+    try:
+        with open(board_log_path(board_path), "r", encoding="utf-8") as fh:
+            lines = [ln.strip() for ln in fh if ln.strip()]
+    except OSError:
+        return ""
+    events = []
+    for ln in lines:
+        try:
+            d = json.loads(ln)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(d, dict):
+            events.append(d)
+    if not events:
+        return ""
+    total = len(events)
+    shown = events[-_EXPORT_LOG_LIMIT:]
+    note = (f'<div class="export-log-note">showing last {len(shown)} of {total} '
+            f'events</div>') if total > len(shown) else ""
+    rows = []
+    for d in shown:
+        ts = d.get("ts") or d.get("time") or d.get("t") or ""
+        ev = d.get("event", "")
+        blk = d.get("block") or ""
+        detail = "; ".join(
+            f"{k}={_short(v)}" for k, v in d.items()
+            if k not in ("event", "block", "ts", "time", "t")
+        )
+        rows.append(
+            f'<tr><td class="log-time">{e(str(ts))}</td><td>{e(str(ev))}</td>'
+            f'<td>{e(str(blk))}</td><td>{e(detail)}</td></tr>'
+        )
+    return (
+        '<section class="export-report"><h2 class="section">Event log</h2>'
+        '<table class="export-log"><thead><tr><th>Time</th><th>Event</th>'
+        '<th>Block</th><th>Detail</th></tr></thead>'
+        f'<tbody>{"".join(rows)}</tbody></table>{note}</section>'
+    )
+
+
+def render_export(board: dict, board_path: str, base_path: str = "",
+                  slug: str | None = None) -> str:
+    """Render the whole board as ONE self-contained static HTML file (§24).
+
+    This is a render *mode*, not a second renderer (§24.2): every block still
+    flows through the EXACT same `_block_html` -> `_wrap_block` pipeline as the
+    live page (via the identical `_render_one` callback, so a `group`'s children
+    go through it too), gated by `export: True` in the ctx. Only the page SHELL
+    differs (_EXPORT_PAGE: no <script>, no meta-refresh, no favicon, no
+    attention bar, all pages flattened) and it reuses page.py's live CSS, so the
+    snapshot looks identical to the board -- it can never drift from the live
+    look.
+
+    All pages (§11) are flattened in `_pages` order (Home first), each under its
+    page heading as a section; then the two report sections (§24.4): open change
+    requests and the event-log table."""
+    board_title = board.get("title", "pAInel")
+    by_page = _blocks_by_page(board)
+    current_agent_status = _agent_status(board)
+    # One hero budget across the WHOLE flattened document (hero is CSS-only and
+    # survives export unchanged, §24.2) -- spent in DOM order like the live page.
+    hero_used = [False]
+
+    def _render_one(b: dict, index: int, total_n: int) -> str:
+        # The IDENTICAL pipeline the live render() uses, plus the two export
+        # signals: `export` (gates the wrapper chrome + each block's own
+        # interactive->static branch) and `inline_asset` (the image block reads
+        # a contained local file as a data: URI through it, §24.3).
+        ctx = {"index": index, "total": total_n,
+               "agent_status": current_agent_status,
+               "base_path": base_path,
+               "export": True,
+               "inline_asset": lambda rel: _asset_data_uri(board_path, rel),
+               "render_block": _render_one}
+        inner = _block_html(b, ctx)
+        return _wrap_block(b, inner, False, hero_used, export=True)
+
+    sections = []
+    for page in _pages(board):
+        blocks_list = by_page.get(page, [])
+        # Home always shows (even empty); a named page with no blocks can't
+        # occur (a page only exists because a block declared it), but guard anyway.
+        if page is not None and not blocks_list:
+            continue
+        total = len(blocks_list)
+        page_html = "".join(_render_one(b, i, total) for i, b in enumerate(blocks_list))
+        heading = board_title if page is None else page
+        sections.append(
+            f'<section class="export-page">'
+            f'<h2 class="section export-page-title">{e(heading)}</h2>'
+            f'{page_html}</section>'
+        )
+    body = "".join(sections)
+    # Report sections (§24.4), below the blocks: open change requests (static),
+    # then the event log. _change_requests_html returns "" when none are open.
+    body += _change_requests_html(board, base_path)
+    body += _export_log_html(board_path)
+
+    meta = board.get("meta", {})
+    metaline = " · ".join(
+        filter(None, [
+            f'Project: {e(meta["project"])}' if meta.get("project") else "",
+            f'Updated: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
+            "Exported snapshot",
+        ])
+    )
+    return _EXPORT_PAGE.format(title=e(board_title), metaline=metaline, body=body)
+
+
+def _export_filename(board_path: str, slug: str | None) -> str:
+    """The download filename (§24.1): `<slug>.html` under the service, or the
+    project dirname (falling back to 'painel') in single-board mode."""
+    if slug:
+        name = slug
+    else:
+        name = os.path.basename(os.path.dirname(os.path.abspath(board_path))) or "painel"
+    return f"{name}.html"
 
 
 # --------------------------------------------------------------------------- #
@@ -1035,6 +1207,26 @@ class _Routes:
     def _send_version(self, board_path: str) -> None:
         self._send(200, json.dumps(_version_payload(board_path)).encode(), "application/json")
 
+    def _send_export(self, board_path: str, base_path: str = "",
+                     slug: str | None = None) -> None:
+        """GET /export (single-board) / /<slug>/export (service), M3 §24.1.
+        Derives its board exactly like /event does, renders the static
+        single-file snapshot, and serves it as a download."""
+        with _lock:
+            board = load_board(board_path)
+        html = render_export(board, board_path, base_path=base_path, slug=slug)
+        body = html.encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{_export_filename(board_path, slug)}"',
+        )
+        self.end_headers()
+        self.wfile.write(body)
+
     def _read_json_body(self) -> dict:
         length = int(self.headers.get("Content-Length", 0))
         try:
@@ -1134,6 +1326,9 @@ class _Handler(_Routes, BaseHTTPRequestHandler):
             # M18 (§22.3): contained, images-only read endpoint for the image
             # block. Same board resolution as /event; realpath-contained inside.
             self._handle_asset(self.board_path, parse_qs(parsed.query).get("p", [None])[0])
+        elif path == "/export":
+            # M3 (§24.1): the static single-file snapshot, downloaded.
+            self._send_export(self.board_path)
         elif path not in ("/version", "/event", "/upload"):
             # Any other path segment is treated as a page name, e.g.
             # "/Estrat%C3%A9gia" -> page "Estratégia". render() already
@@ -1234,6 +1429,9 @@ class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
             # M18 (§22.3): images-only, realpath-contained. Same board
             # resolution as /<slug>/event; the relpath rides the query string.
             self._handle_asset(entry["path"], parse_qs(parsed.query).get("p", [None])[0])
+        elif rest == "export":
+            # M3 (§24.1): the static single-file snapshot for this board.
+            self._send_export(entry["path"], base_path, entry["slug"])
         elif rest in ("event", "upload"):
             self._send(404, b"not found", "text/plain")  # POST-only, same as pre-M13's /event
             return

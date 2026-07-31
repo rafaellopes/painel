@@ -16,6 +16,15 @@ def render(block: dict, ctx: dict) -> str:
             f'<div class="card answered"><h3>Choice</h3><p>{prompt}</p>'
             f'<div class="answer">Chosen: {e(block.get("selected"))}</div></div>'
         )
+    # Export (M3, §24.2): no option buttons -- show the open STATE and list the
+    # options as static text.
+    if (ctx or {}).get("export"):
+        opts = ", ".join(e(o) for o in block.get("options", []))
+        tail = f' · options: {opts}' if opts else ""
+        return (
+            f'<div class="card"><h3>Choice</h3><p>{prompt}</p>'
+            f'<div class="answer muted">Awaiting choice{tail}</div></div>'
+        )
     btns = "".join(
         f'<button class="opt" onclick="choose(\'{bid}\',{e(json.dumps(o))})">{e(o)}</button>'
         for o in block.get("options", [])
