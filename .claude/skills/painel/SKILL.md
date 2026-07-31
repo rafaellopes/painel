@@ -214,6 +214,7 @@ Block types:
 - `log` — `{ "type":"log", "title":"...", "entries":[{"ts":"HH:MM","text":"..."}] }`
 - `chat` — free-form conversation, a substitute for a separate terminal for day-to-day dialogue. `{ "type":"chat", "title":"Conversation", "messages":[{"from":"user","text":"..."},{"from":"agent","text":"..."}] }`. The human's replies arrive as a **non-silent** `chat_message` event (append `{"from":"user","text":value}` to `messages` and reply by appending your own `{"from":"agent","text":...}` before saving the board). Only compose one `chat` block per board (top-level). It never contributes to the attention bar — a message awaiting your reply is *your* turn, not the human's, so it's surfaced via `meta.agent_status` (the same 🟢/🟡/⚪ chip shown in the page header) rather than the yellow "waiting on you" bar.
 - `resources` — docs/mockups/reference links that stay current on their own, no re-describing needed as they change. Read-only, no events. `{ "type":"resources", "title":"...", "items":[{"label":"...","kind":"file","path":"/abs/path"},{"label":"...","kind":"folder","path":"/abs/path"},{"label":"...","kind":"url","url":"https://..."}] }`. `file`/`folder` items show a live "updated Xm/h/d ago" freshness string (computed fresh on every request) and the whole page auto-refreshes whenever one of those paths changes on disk — you never need to touch board.json just because a linked file changed. A missing path shows a visible "⚠ file not found" warning instead of disappearing. Use absolute paths only (this only makes sense when the human and you share a machine).
+- `group` — a **layout container**, not content of its own: it arranges other blocks. `{ "type":"group", "layout":"columns|stack", "title":"optional label", "blocks":[ /* nested blocks, each with its own id */ ] }`. `columns` lays children side-by-side (wrapping to a stack on a narrow screen); `stack` (default) is a titled section. Nested blocks are ordinary blocks — same ids (globally unique), same events, same attention/`#blk-<id>` behaviour: a pending `question` inside a group still shows in the attention bar. **One level only — a group may not contain a group** (a nested group is flattened). A group carries a `page` like any block; its children inherit it. See "Adaptive layout & phase" below for when to reach for it.
 - `upload` — the human hands **files** (images, a PDF, a whole folder) to you. The inverse of `resources`: `resources` shows files *to* the human, `upload` lets them drop files *for* you into a destination **you** choose. `{ "type":"upload", "prompt":"Drag your screenshots here", "accept":".png,.jpg", "dest_dir":"docs/screenshots", "multiple":true, "directory":false, "files":[] }`. `dest_dir` is **relative to the project directory** (where board.json lives) — you pick it, so the human never has to know or ask a path. On each drop the server writes the file (sanitized name, 25 MB cap, collision-suffixed, never escaping the project dir), appends `{name,path,size}` to `files[]`, and emits a **non-silent** `file_added {block,name,path,size}` event — react to it (read the real path from `files[]`, or show the files back with a `resources` block). Pending in the attention bar while `files` is empty (waiting on the human), resolved once ≥1 file lands. There is also a persistent global "📎 Send files to the agent" affordance at the bottom of every board (drops into `painel-uploads/`, emits `file_added` with `block:null`) — so even without an `upload` block, "where do I put this?" can never arise. **If you need a FILE from the human, that's an `upload` block, not a checklist item that names a path** (see "Checklist vs question/form" — an unclear "Drop the screenshots in docs/screenshots/" step forces the human to know a path and ask; an `upload` block with the `dest_dir` you chose just gives them a drop target).
 
 ## Multi-page boards
@@ -243,6 +244,36 @@ Use it to group by theme/workstream (e.g. "Finance", "Legal", "Operations")
 once a single board is doing double or triple duty. Don't reach for it on
 small boards — it adds visual structure only once there's enough content to
 justify it.
+
+## Adaptive layout & phase — for big boards, used sparingly
+
+Four additive tools give a large board layout and a sense of maturity, without
+any free-form HTML. **A five-item board needs none of them** — same discipline
+as multi-page: they earn their place only once a board is genuinely large.
+
+- **Columns (`group` with `"layout":"columns"`)** — for content that is
+  *genuinely parallel* and read together: evidence-vs-mechanism, before-vs-
+  after, option-A-vs-option-B. Two, maybe three children. Not a way to shrink a
+  tall board by jamming unrelated cards side by side.
+- **`"hero": true`** — on the ONE lead block the human should read first ("Verdict:
+  it's not the carrier"). Typically a `markdown` or `note`. At most one per page;
+  if you mark several, only the first renders as hero. Don't hero everything —
+  then nothing is the lead.
+- **`"collapsed": true`** — fold a block's body behind a native expander, for
+  long reference prose the human rarely needs open (a 15-note incident report,
+  full logs). The summary is the block's `title` (give it one). Never collapse a
+  block that's waiting on the human — pAInel force-expands pending blocks anyway,
+  but don't rely on that; collapse only resolved/reference content.
+- **`meta.phase`** ∈ `"exploring" | "deciding" | "executing" | "done"` — set it
+  to reflect where the *subject* stands, and the whole page's accent + density
+  shift to match. You own it and set it explicitly (like `meta.agent_status`);
+  update it as the work moves from exploring options → deciding → executing →
+  done. It's orthogonal to `agent_status` (whose *turn* it is) — both coexist.
+  A quiet header pill shows it; there's no picker for the human.
+
+Reach for these the way you reach for multi-page: when the board is big enough
+that a flat single column is itself the "lost in the chat" problem. On a short
+board, plain stacked cards are correct.
 
 ## Checklist vs question/form — don't hide data behind a checkbox
 

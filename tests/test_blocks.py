@@ -7,6 +7,7 @@ import unittest
 from painel.blocks import REGISTRY
 from painel.blocks import heading, markdown, note, tasks, plan, checklist
 from painel.blocks import question, choice, approval, form, log, chat, resources, upload
+from painel.blocks import group
 
 XSS = '"<script>alert(1)</script>'
 
@@ -16,7 +17,7 @@ class RegistryTest(unittest.TestCase):
         expected = {
             "heading", "markdown", "note", "tasks", "plan", "checklist",
             "question", "choice", "approval", "form", "log", "chat", "resources",
-            "upload",
+            "upload", "group",
         }
         self.assertEqual(expected, set(REGISTRY.keys()))
 

@@ -291,12 +291,55 @@ body.has-nav {{ max-width:1040px; }}
   text-decoration:none; font-size:.85rem; }}
 .switcher-item:hover {{ background:var(--border); }}
 .switcher-item.current {{ background:var(--accent); color:var(--accent-ink); font-weight:600; }}
+/* --- Adaptive layout & phase-awareness (M17, docs/SPEC.md §21) --- */
+/* §21.1 group container: `columns` lays children side-by-side and WRAPS to a
+   stack at the SAME §11.2 max-width:600px breakpoint reused below (never a
+   second one); `stack` is plain block flow. CSS flex only, no JS, no grids. */
+.group {{ margin-bottom:.85rem; }}
+.group > .group-title {{ margin-top:0; }}
+.group-cols {{ display:flex; flex-wrap:wrap; gap:1rem; align-items:flex-start; }}
+.group-cols > div {{ flex:1 1 240px; min-width:0; }}
+.group-cols > div > .card {{ margin-bottom:0; }}
+/* §21.2 hero: the one lead block, visually dominant -- larger, accent-bordered,
+   and full-width even inside a columns group (spans the whole row). */
+.hero > .card {{ border:1px solid var(--border); border-left:4px solid var(--accent);
+  padding:1.3rem 1.4rem; }}
+.hero > .card h3 {{ color:var(--accent); }}
+.hero > .card p, .hero > .card .md {{ font-size:1.05rem; }}
+.group-cols > .hero {{ flex-basis:100%; }}
+/* §21.3 progressive disclosure via native <details> (no JS for the fold
+   itself). Summary is the block's title/lead; the body -- the block's own card
+   plus its ✎ box -- expands on click. */
+details.blk-collapse {{ margin-bottom:.85rem; }}
+details.blk-collapse > summary {{ cursor:pointer; font-weight:600; color:var(--text);
+  list-style:none; padding:.45rem .15rem; font-size:.92rem; }}
+details.blk-collapse > summary::-webkit-details-marker {{ display:none; }}
+details.blk-collapse > summary::before {{ content:"▸ "; color:var(--muted); }}
+details.blk-collapse[open] > summary::before {{ content:"▾ "; }}
+details.blk-collapse[open] > summary {{ color:var(--muted); font-weight:600;
+  text-transform:uppercase; letter-spacing:.06em; font-size:.72rem; margin-bottom:.4rem; }}
+/* §21.4 phase-awareness: a restrained, CSS-only palette shift -- the accent hue
+   plus a density token (card spacing), board-wide. Set on <body>, so it wins
+   over :root for the whole subtree and reads in BOTH light and dark (only the
+   accent/spacing move; bg/text stay theme-driven). Absent meta.phase => none of
+   this applies (today's look exactly, pinned by test). */
+body.phase-exploring {{ --accent:#7dd3fc; --phase-space:1.15rem; }}   /* airy, working cyan */
+body.phase-deciding  {{ --accent:#f5b13d; --phase-space:.7rem; }}     /* warmer, tighter */
+body.phase-executing {{ --accent:#57ce87; --phase-space:.85rem; }}    /* progress-forward green */
+body.phase-done      {{ --accent:#9aa0aa; --phase-space:.85rem; }}    /* muted, archived */
+body[class*="phase-"] .card {{ margin-bottom:var(--phase-space,.85rem); }}
+body.phase-done .page-main {{ opacity:.85; filter:saturate(.72); }}   /* subtle archived wash */
+.phase-pill {{ margin-left:.4rem; }}
 @media (max-width:600px) {{
   .page-shell {{ flex-direction:column; gap:0; }}
   .pages-nav {{ width:100%; }}
   .pages-sidebar {{ display:none; }}
   .pages-dropdown {{ display:block; margin-bottom:1rem; }}
   .app-shell {{ width:100%; position:static; margin-bottom:1rem; }}
+  /* §21.1: columns collapse to a stack on narrow viewports -- the reused
+     §11.2 breakpoint, not a new one. */
+  .group-cols {{ flex-direction:column; gap:0; }}
+  .group-cols > div {{ flex-basis:auto; }}
 }}
 </style></head><body{nav_class}>
 <div id="dup-notice">👉 you already have this pAInel open — closing this tab</div>
@@ -305,7 +348,7 @@ body.has-nav {{ max-width:1040px; }}
 <header id="page-header">
   <h1>{title}</h1>
   <div class="metaline">{metaline}</div>
-  <div id="status-chip" class="status-chip">{status_chip}</div>
+  <div id="status-chip" class="status-chip">{status_chip}</div>{phase_pill}
 </header>
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
 {cr_global}
@@ -463,6 +506,44 @@ for (const key of _openCrBoxes()) {{
     sessionStorage.setItem('switcherOpen', det.open ? '1' : '0');
   }});
 }})();
+
+// --- Progressive disclosure (M17, docs/SPEC.md §21.3) -----------------------
+// Native <details> handles the fold with no JS; this only (1) keeps a block the
+// human expanded OPEN across the 2s poll-reload, and (2) opens+scrolls a
+// collapsed block when its #blk-<id> anchor is targeted -- landing the human on
+// open content, never a closed summary. Persistence is sessionStorage keyed
+// '<slug>:<block-id>' (basePath is the slug, '' single-board), the same
+// no-server-state discipline as the open plan-threads / CR boxes / switcher.
+function _openDetails() {{
+  try {{ return new Set(JSON.parse(sessionStorage.getItem('openDetails') || '[]')); }}
+  catch (e) {{ return new Set(); }}
+}}
+function _saveDetail(skey, open) {{
+  const s = _openDetails();
+  if (open) s.add(skey); else s.delete(skey);
+  sessionStorage.setItem('openDetails', JSON.stringify([...s]));
+}}
+(function() {{
+  for (const det of document.querySelectorAll('details.blk-collapse')) {{
+    const skey = basePath + ':' + (det.getAttribute('data-key') || '');
+    det.dataset.skey = skey;
+    if (_openDetails().has(skey)) det.open = true;
+    det.addEventListener('toggle', function() {{ _saveDetail(skey, det.open); }});
+  }}
+}})();
+function openTargetDetails() {{
+  const h = location.hash;
+  if (!h || h.length < 2) return;
+  let el;
+  try {{ el = document.querySelector(h); }} catch (e) {{ return; }}
+  if (!el) return;
+  const det = el.matches('details.blk-collapse') ? el
+            : el.querySelector('details.blk-collapse');
+  if (det && !det.open) {{ det.open = true; _saveDetail(det.dataset.skey, true); }}
+  el.scrollIntoView({{block: 'start'}});
+}}
+window.addEventListener('hashchange', openTargetDetails);
+openTargetDetails();
 {block_js}
 // Smart auto-refresh: reload only when the board changed on the server AND the
 // user is not typing (no field focused, nothing unsent). Fixes the classic

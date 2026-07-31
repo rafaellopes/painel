@@ -38,9 +38,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs, quote, unquote
 
 from . import directory, registry
-from .blocks import REGISTRY
+from .blocks import REGISTRY, group as _group
 from .blocks.base import e, agent_status as _blocks_agent_status, status_chip_text as _blocks_status_chip_text
 from .page import _PAGE, CR_GLOBAL_HTML, UPLOAD_GLOBAL_HTML
+
+# M17 (docs/SPEC.md §21.4): the four phases meta.phase may carry, and the quiet
+# header pill each shows. Any other value (or absence) means "no phase" -> the
+# page renders exactly as it did pre-M17 (backward-compat, pinned by test).
+_PHASES = ("exploring", "deciding", "executing", "done")
+_PHASE_LABELS = {
+    "exploring": "🧭 Exploring",
+    "deciding": "⚖️ Deciding",
+    "executing": "🚧 Executing",
+    "done": "✅ Done",
+}
 
 _lock = threading.Lock()
 
@@ -94,6 +105,71 @@ def _block_html(b: dict, ctx: dict) -> str:
     if mod is None:
         return f'<div class="card muted">unknown block: {e(t)}</div>'
     return mod.render(b, ctx)
+
+
+# --------------------------------------------------------------------------- #
+# Adaptive layout & phase-awareness (M17, docs/SPEC.md §21)                    #
+# --------------------------------------------------------------------------- #
+def _collapse_summary(b: dict) -> str:
+    """The <summary> lead for a collapsed block (§21.3): its title, else a
+    short lead pulled from prompt/text, else a plain fallback. Returned raw --
+    the caller escapes it with e()."""
+    for k in ("title", "prompt", "text"):
+        v = b.get(k)
+        if v:
+            s = str(v).strip().replace("\n", " ")
+            return s[:80] + ("…" if len(s) > 80 else "")
+    return "Details"
+
+
+def _wrap_block(b: dict, inner: str, is_pending: bool, hero_used: list) -> str:
+    """The ONE generic per-block wrapper (docs/SPEC.md §6.5) -- every block,
+    top-level or nested inside a `group`, goes through exactly this: the
+    `#blk-<id>` anchor, the needs-user marker, the ✎ change-request box, and now
+    M17's `hero`/`collapsed` (§21.2/§21.3). Build-it-once-in-the-wrapper, so any
+    block type gets all of it for free with zero per-block-module code.
+
+    A board using none of M17 renders byte-for-byte as before: with no hero and
+    no collapse this is `<div id="blk-x"[ class="needs-user"]>{inner}{cr}</div>`,
+    exactly the pre-M17 string."""
+    bid = b.get("id", "")
+    classes = []
+    if is_pending:
+        classes.append("needs-user")
+    # hero (§21.2): at most one per page; the FIRST marked block wins, the rest
+    # fall back to normal. hero_used is a shared 1-element list so the budget is
+    # spent in DOM order across top-level AND nested blocks alike.
+    if b.get("hero") and not hero_used[0]:
+        classes.append("hero")
+        hero_used[0] = True
+    cls = f' class="{" ".join(classes)}"' if classes else ""
+    cr = _change_request_box_html(bid)
+    # collapsed (§21.3): body behind native <details>. A block pending on the
+    # human is NEVER collapsed even if marked -- you cannot fold away a question
+    # and still expect it answered (force-expand + test).
+    if b.get("collapsed") and not is_pending:
+        summary = e(_collapse_summary(b))
+        body = (f'<details class="blk-collapse" data-key="{e(bid)}">'
+                f'<summary>{summary}</summary>{inner}{cr}</details>')
+    else:
+        body = f"{inner}{cr}"
+    return f'<div id="blk-{e(bid)}"{cls}>{body}</div>'
+
+
+def _id_page_map(board: dict) -> dict:
+    """{block_id: page} for EVERY renderable block, including the children of a
+    `group` (which inherit the group's own page, §21.1). Top-level `_blocks_by_page`
+    only knows about top-level blocks; this is what lets a pending `question`
+    nested in a group be counted on the right page's badge and linked to the
+    right page from the attention bar."""
+    out = {}
+    for b in board.get("blocks", []):
+        p = b.get("page")
+        out[str(b.get("id"))] = p
+        if b.get("type") == _group.TYPE:
+            for c in _group.child_blocks(b):
+                out[str(c.get("id"))] = p  # group owns placement; child inherits
+    return out
 
 
 def _needs_user(board: dict) -> list:
@@ -176,7 +252,7 @@ def _change_requests_html(board: dict, base: str = "") -> str:
     open_crs = _open_change_requests(board)
     if not open_crs:
         return ""
-    block_page = {str(b.get("id")): b.get("page") for b in board.get("blocks", [])}
+    block_page = _id_page_map(board)  # includes group children (M17, §21.1)
     block_by_id = {str(b.get("id")): b for b in board.get("blocks", [])}
     rows = []
     for cr in open_crs:
@@ -232,14 +308,14 @@ def _blocks_by_page(board: dict) -> dict:
 
 
 def _page_pending_counts(board: dict) -> dict:
-    """{page_name_or_None: pending_count} -- intersect needs_user() block ids
-    with each page's block ids."""
-    by_page = _blocks_by_page(board)
-    pending_ids = {bid for bid, _ in _needs_user(board)}
-    counts = {}
-    for page, blocks_list in by_page.items():
-        ids = {str(b.get("id")) for b in blocks_list}
-        counts[page] = len(pending_ids & ids)
+    """{page_name_or_None: pending_count} -- map each pending block id to its
+    page. Uses _id_page_map so a pending block nested inside a `group` (M17,
+    §21.1) is counted on the group's page, not dropped."""
+    id_page = _id_page_map(board)
+    counts = {p: 0 for p in _pages(board)}
+    for bid, _label in _needs_user(board):
+        p = id_page.get(str(bid))
+        counts[p] = counts.get(p, 0) + 1
     return counts
 
 
@@ -504,21 +580,37 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     # CSS, never in a block's own render().
     pending = _needs_user(board)  # spans ALL pages (§11.2), reused below for the attention bar
     pending_ids = {str(bid) for bid, _label in pending}
-    blocks = "".join(
-        f'<div id="blk-{e(b.get("id", ""))}"'
-        + (' class="needs-user"' if str(b.get("id")) in pending_ids else "")
-        + ">"
-        + _block_html(b, {"index": i, "total": total, "agent_status": current_agent_status})
-        + _change_request_box_html(b.get("id", ""))
-        + "</div>"
-        for i, b in enumerate(blocks_list)
-    )
+    # M17 (§21.2): the hero budget -- at most one hero per page. A shared
+    # 1-element list so it's spent in DOM order across BOTH top-level blocks and
+    # blocks nested in a group (rendered via the same callback below).
+    hero_used = [False]
+
+    def _render_one(b: dict, index: int, total_n: int) -> str:
+        # ctx carries `render_block` (M17, §21.5): a `group` renders its children
+        # by calling it, so every nested block goes through this IDENTICAL
+        # pipeline -- _block_html + the generic _wrap_block -- never a second
+        # rendering path.
+        ctx = {"index": index, "total": total_n,
+               "agent_status": current_agent_status,
+               "render_block": _render_one}
+        inner = _block_html(b, ctx)
+        return _wrap_block(b, inner, str(b.get("id")) in pending_ids, hero_used)
+
+    blocks = "".join(_render_one(b, i, total) for i, b in enumerate(blocks_list))
     # Open change requests card (§12.4) -- board-level state, only shown on
     # Home so it doesn't repeat identically on every page of a multi-page
     # board (its rows already link cross-page via _page_href when relevant).
     if active_page is None:
         blocks += _change_requests_html(board, base_path)
     meta = board.get("meta", {})
+    # M17 (§21.4): meta.phase shifts the palette board-wide via a body class,
+    # CSS-only. An absent/unknown value adds nothing -> today's look exactly
+    # (backward-compat, pinned by test). The agent owns it, like agent_status --
+    # a quiet header pill shows it, there is no picker.
+    phase = meta.get("phase") if meta.get("phase") in _PHASES else None
+    body_class = "has-nav" + (f" phase-{phase}" if phase else "")
+    phase_pill = (f'<span class="status-chip phase-pill phase-pill-{phase}">'
+                  f'{e(_PHASE_LABELS[phase])}</span>') if phase else ""
     metaline = " · ".join(
         filter(None, [
             f'Project: {e(meta["project"])}' if meta.get("project") else "",
@@ -528,7 +620,9 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     # Attention bar (uses `pending` computed above, which already spans all pages).
     pending_count = len(pending)
     if pending:
-        block_page = {str(b.get("id")): b.get("page") for b in all_blocks}
+        # _id_page_map (not just top-level blocks) so a pending block nested in
+        # a `group` (M17, §21.1) links to the group's page, not "/" (§11.2).
+        block_page = _id_page_map(board)
         links = []
         for bid, label in pending:
             p = block_page.get(str(bid))
@@ -561,8 +655,8 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     nav = f'<aside class="app-shell">{switcher}{page_list}</aside>'
     return _PAGE.format(
         title=e(title_text), metaline=metaline, attention=attention,
-        breadcrumb=breadcrumb,
-        nav=nav, nav_class=" class=\"has-nav\"",
+        breadcrumb=breadcrumb, phase_pill=phase_pill,
+        nav=nav, nav_class=f' class="{body_class}"',
         page_shell_open='<div class="page-shell">', page_shell_close="</div>\n",
         page_main_open='<div class="page-main">\n', page_main_close="\n</div>",
         blocks=blocks, block_js=_block_js(),

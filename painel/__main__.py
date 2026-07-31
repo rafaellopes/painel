@@ -73,7 +73,7 @@ def _demo_board() -> dict:
     _readme_path = os.path.join(_repo_root, "README.md")
     return {
         "title": "pAInel — demo",
-        "meta": {"project": "demo", "agent_status": "working"},
+        "meta": {"project": "demo", "agent_status": "working", "phase": "exploring"},
         "blocks": [
             {"id": "h1", "type": "heading", "text": "What it is"},
             {"id": "m1", "type": "markdown",
@@ -134,6 +134,25 @@ def _demo_board() -> dict:
              "accept": ".png,.jpg,.jpeg,.gif,.webp",
              "dest_dir": "docs/screenshots", "multiple": True, "directory": False,
              "files": []},
+            {"id": "h8", "type": "heading", "text": "Adaptive layout (M17)"},
+            # hero (§21.2): the one lead takeaway, rendered visually dominant.
+            {"id": "hero1", "type": "markdown", "hero": True,
+             "text": "**Verdict:** the board can now compose typed blocks — "
+                     "side-by-side, a lead, and fold-away detail — without any free-form HTML."},
+            # group with columns (§21.1): genuinely parallel content, side by
+            # side, wrapping to a stack on a narrow screen.
+            {"id": "g1", "type": "group", "layout": "columns",
+             "title": "Evidence vs mechanism", "blocks": [
+                 {"id": "gcol1", "type": "note", "tone": "info",
+                  "text": "**Evidence:** two independent traces point at the same window."},
+                 {"id": "gcol2", "type": "note", "tone": "ok",
+                  "text": "**Mechanism:** a retry storm, not the carrier — reproduced locally."},
+             ]},
+            # collapsed (§21.3): long reference prose the human rarely needs open.
+            {"id": "col1", "type": "note", "tone": "info", "collapsed": True,
+             "title": "Full reference notes (click to expand)",
+             "text": "Long-form detail lives here, folded away by default so the "
+                     "board stays scannable — expand it only when you need it."},
         ],
         "change_requests": [
             {"id": "cr1", "block": "pl", "text": "add a user-testing phase",

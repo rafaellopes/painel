@@ -42,6 +42,7 @@ what interaction it hands back:
 | `form` | Several labelled fields | The filled object |
 | `resources` | Live docs / mockups / links, always current | — (read-only) |
 | `upload` | A drag-and-drop zone the agent points at a folder it chose | The files you drop, written to disk + a `file_added` event |
+| `group` | A layout container: side-by-side **columns** or a titled **stack** of other blocks | — (arranges its children) |
 | `markdown` / `note` / `heading` / `log` | Formatted context | — (read-only) |
 
 The killer case: **the agent needs you to do something by hand** — log into a
@@ -230,6 +231,32 @@ button already beside every checklist item — click it, say "this needs an
 answer field", and the agent converts the block. The warning never blocks or
 hides anything; it just makes the mistake visible from both sides.
 
+### Adaptive layout & phase — when a board outgrows one column
+
+A big board is the "lost in the chat" problem one level down. Four additive
+tools give the agent layout expressiveness without any free-form HTML — every
+block stays typed and server-rendered:
+
+- **`group` with `"layout": "columns"`** puts genuinely parallel content
+  side by side (*evidence* next to *mechanism*), wrapping back to a stack on a
+  narrow screen. `"stack"` (the default) is just a titled section.
+- **`"hero": true`** on any block makes the one lead takeaway visually
+  dominant — larger, accent-bordered, full-width even inside columns. At most
+  one per page.
+- **`"collapsed": true`** folds a block's body behind a native expander, so a
+  long reference note shows three lines and opens on demand. A block you still
+  have to act on never starts folded, and what you expand stays expanded across
+  refreshes.
+- **`meta.phase`** (`"exploring" | "deciding" | "executing" | "done"`) shifts
+  the whole page's accent and density to reflect where the work stands — a
+  subject under exploration *looks* different from a finished one. A quiet
+  header pill shows it; the agent owns it, there's no picker.
+
+Nested blocks keep everything: a pending `question` inside a `group` still
+shows in the attention bar and its link still scrolls (and opens) to it. Like
+multi-page, these earn their place only once a board is large — a five-item
+board needs none of them.
+
 ## Using it inside Claude Code
 
 pAInel ships with a Claude Code **skill** (`.claude/skills/painel/`). Install
@@ -293,13 +320,20 @@ Or, if you have `pipx`: `pipx install /path/to/painel`.
       { "text": "Run migration", "status": "wip" }
     ]},
     { "id": "q1", "type": "question", "prompt": "Which environment?", "answer": null },
-    { "id": "ap", "type": "approval", "prompt": "Deploy now?", "decision": null }
+    { "id": "ap", "type": "approval", "prompt": "Deploy now?", "decision": null },
+    { "id": "g1", "type": "group", "layout": "columns", "title": "Side by side", "blocks": [
+      { "id": "n1", "type": "note", "text": "Left" },
+      { "id": "n2", "type": "note", "text": "Right" }
+    ]}
   ]
 }
 ```
 
 Task statuses: `done`, `wip`, `pending`, `blocked`.
 Note tones: `info`, `ok`, `warn`, `danger`.
+Group layouts: `columns`, `stack` (default). Any block may also carry
+`"hero": true` (one lead block per page) or `"collapsed": true` (fold the body).
+Board phase: `meta.phase` ∈ `exploring`, `deciding`, `executing`, `done`.
 
 ## Design principles
 
