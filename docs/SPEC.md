@@ -1545,6 +1545,109 @@ beyond what already exists. Charts/data-viz remain out (that's the reserved
 
 ---
 
+## 22. The `image` block (M18) — full spec
+
+**What this is — and what it is emphatically NOT.** The agent decides, per
+subject, the best way to explain something to a human. Sometimes that answer
+is visual: a chart, a diagram, a generated figure *beside* the text that reads
+it. Until now the palette had every primitive except "a picture" — markdown
+escapes all HTML (§base `md_inline`), and no image block exists. `image` adds
+that one missing primitive. It is **domain-agnostic**: pAInel never learns what
+an astral chart, a candlestick, or an org diagram *is*. It only gains the
+ability to place a local image next to text when the agent — who does the
+understanding — composes it. No subject-specific logic enters the codebase;
+this is a primitive, not knowledge.
+
+### 22.1 Board shape
+
+```jsonc
+{ "id":"chart", "type":"image",
+  "src":"painel-assets/natal-chart.svg",   // project-relative path OR a data: URI. NEVER a remote http(s) URL.
+  "alt":"Natal chart for 12 May 1988",       // REQUIRED — accessibility + fallback text
+  "caption":"Sun in Taurus, Moon in Pisces", // optional, rendered below as inline md
+  "max_width":"420px",                        // optional cap; default responsive 100%
+  "fit":"contain" }                           // optional: contain|cover, default contain
+```
+
+### 22.2 Where the image comes from
+
+The agent generates or obtains the image and saves it into the project dir
+(convention: `painel-assets/`), then points `src` at that **project-relative**
+path — the exact inverse of `upload` (§19): upload writes human→disk, `image`
+reads disk→page. Or the agent inlines a small generated figure as a `data:`
+URI (SVG text or base64), no file needed. **pAInel does not fetch, generate, or
+transform images** — it renders what is already local.
+
+### 22.3 Serving the asset (contained read endpoint)
+
+A project-relative `src` is served through `GET /<slug>/asset?p=<relpath>`
+(single-board: `GET /asset?p=...`), added alongside `/event`/`/upload` in
+**both** the service handler and the single-board handler, deriving the target
+board the same way `/event` does. Containment mirrors §19.4 exactly, in
+reverse (read instead of write):
+
+1. **Path containment.** Resolve `p` against the project dir with
+   `os.path.realpath`; if the result escapes the project dir, refuse with
+   **404 and no bytes** (404 not 400 — do not confirm the existence of paths
+   outside the project). Treat the board as untrusted input, same reasoning as
+   §19.4 (a board can be shared).
+2. **Images only.** Serve only a whitelisted extension set — `.png .jpg .jpeg
+   .gif .webp .svg` — with the matching `Content-Type`. Any other extension →
+   404. This endpoint is **images-only by design** so it can never become a
+   generic project-file exfiltration primitive.
+3. **SVG safety.** SVG is served `image/svg+xml`. Referenced as an `<img src>`
+   subresource the browser does **not** execute the SVG's script or
+   `foreignObject` (image context neuters them), so it is safe — pin this.
+4. **Freshness.** `Cache-Control: no-store` — an asset can change between
+   reloads (like `resources` freshness, §15); never serve a stale cached copy.
+5. **Loopback only**, inheriting §17.6; adds no new network-surface class
+   beyond what `/upload` already opened.
+
+A `data:` `src` is emitted inline, no endpoint hit. A **remote `http(s)` `src`
+is refused** — render the `alt` in a visible "image not shown (remote src
+refused)" fallback rather than fetching it. This is the security line: no
+remote fetch (no SSRF, no exfiltration via URL, no tracking pixel), no raw HTML.
+
+### 22.4 Rendering
+
+- `<figure class="card img-block">` → `<img src alt loading="lazy">` + optional
+  `<figcaption>` (inline md). `src`, `alt`, caption all `e()`-escaped; the
+  served path is percent-encoded in the query string.
+- Respects `max_width`/`fit`; default `max-width:100%` so it never overflows —
+  critical because the point is images **inside a `group`** (§21.1) beside
+  text; inside `.group-cols` the image sizes to its column.
+- Read-only, same module shape as `markdown`/`note`: no events, `apply`→False,
+  `needs_user`→[], `SILENT_EVENTS` empty.
+- A missing/failed image shows the `alt` in a visible fallback box (a broken
+  image looks like a bug), not a broken-image glyph.
+
+### 22.5 The composition it unlocks (why it exists)
+
+Having decided "the best way to explain THIS is a figure beside the text," the
+agent composes a `group layout:columns` with an `image` in one column and a
+`markdown`/`note` in the other. The astral-chart example: the chart image + the
+transit reading side by side, page in `phase:exploring`. This completes the
+M17 promise — adaptive composition had every primitive except a picture.
+pAInel still knows nothing about astrology; it only knows how to put a local
+image next to text.
+
+### 22.6 Non-goals for M18
+
+- No image generation, resizing, cropping, or format conversion server-side —
+  the agent brings a ready asset.
+- **No remote URLs, ever** (the security line). If a board needs an external
+  image the agent downloads it into the project dir first — its decision, its
+  containment — and references the local copy.
+- No galleries/carousels/lightbox — one image per block; multiple images =
+  multiple blocks (optionally in a `group`). Single-purpose like every block.
+- No reuse as a generic static-file server — the asset endpoint is
+  whitelisted-images-only, by extension **and** Content-Type.
+- The existing `resources` `file://` thumbnail (§15) is **not** re-litigated;
+  `image` deliberately uses the served endpoint because `file://` subresources
+  are unreliable from an `http://` origin.
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -1566,6 +1669,7 @@ beyond what already exists. Charts/data-viz remain out (that's the reserved
 | **M15** | The `upload` block (§19): agent-composed drag/drop/pick zone writing to an agent-chosen `dest_dir` relative to the project, `POST /<slug>/upload`, `file_added` event, plus a global "📎 enviar ficheiros" affordance (`block:null` → `painel-uploads/`) | Dropping files writes them under the resolved dest and emits `file_added` to that board's own `<board>.log` (not silent); path containment refuses a `dest_dir`/filename escaping the project dir (400, no write); filenames sanitized + collision-suffixed never clobber; per-file size cap enforced; the global affordance needs no agent prompt so "where do I put this?" can't arise; loopback-only, no new network surface beyond `/event` |
 | **M16** | Block-choice lint (§20): `painel/lint.py` + `painel lint` CLI + an inline `⚠` at render time for `checklist` items that look like they need an answer | Flags **answer-shaped phrasing** (incident #3 and any `?`-ending item) and does NOT flag plain actions (login/download/publish/record) — both directions pinned by test; §20.5 records the two incident types this deliberately does NOT cover and why (widening the markers to force them would trade precision for noise, which §20.1 forbids); `painel lint` exits 1 when flagged, 0 when clean; the `⚠` never blocks rendering and its copy points at the per-item ❓; accent-insensitive matching reuses the existing NFKD fold; pure function over a board dict, no block-module hook, no dependencies |
 | **M17** | Adaptive layout & phase-awareness (§21): a `group` container (columns/stack, one level), a `hero` flag, per-block `collapsed` progressive disclosure, and `meta.phase` shifting the palette/emphasis | Additive — a board using none of it renders byte-identically to pre-M17 (pinned by test); a `question` nested in a `group` still appears in the attention bar and its `#blk-<id>` anchor still works; a pending block never starts collapsed; a collapsed block's anchor scrolls to it AND opens it; expanded state survives the poll-reload via sessionStorage; `meta.phase` absent → today's look unchanged; columns wrap to stacked at the existing narrow breakpoint; no nested groups; zero dependencies, CSS-only, all `e()`-escaped |
+| **M18** | The `image` block (§22): a domain-agnostic image primitive — `src` (project-relative path or `data:` URI, never remote), `alt`, optional `caption`/`max_width`/`fit` — served through a contained `GET /<slug>/asset?p=` endpoint | Additive — a board with no `image` renders byte-identically (pinned); a project-relative `src` renders through `/<slug>/asset` with the correct image `Content-Type`; a `src` escaping the project dir → 404 no bytes (pinned); a non-image extension → 404 (pinned); a remote `http(s)` `src` is refused and shows the alt fallback, never fetched (pinned); a `data:` src renders inline with no endpoint hit; an `image` inside a `group:columns` sizes to its column and its alt/caption are `e()`-escaped; SVG served as `image/svg+xml` and its script does not execute in `<img>` context; read-only (no events); zero dependencies, loopback only |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
