@@ -307,6 +307,23 @@ body.has-nav {{ max-width:1040px; }}
 .hero > .card h3 {{ color:var(--accent); }}
 .hero > .card p, .hero > .card .md {{ font-size:1.05rem; }}
 .group-cols > .hero {{ flex-basis:100%; }}
+/* §22.4 image block: default responsive so an image NEVER overflows its column
+   -- the whole point is images inside a `group:columns` beside text. `img` is
+   block-level and capped at 100% of the card; an optional max_width/fit cap
+   comes as inline style. Theme-aware via the shared --card/--border/--muted
+   tokens (no hardcoded colors), so it reads in both light and dark. */
+.img-block {{ margin:0 0 .85rem; padding:.5rem; overflow:hidden; }}
+.img-block img {{ display:block; max-width:100%; height:auto; border-radius:8px; margin:0 auto; }}
+.img-block .img-cap {{ margin-top:.5rem; text-align:center; }}
+/* Inside a columns group the image sizes to its column (the card is already
+   flex:1 with min-width:0; max-width:100% keeps the image within it). */
+.group-cols .img-block img {{ width:100%; }}
+/* Visible fallback box for a missing / failed / refused-remote image (§22.3/
+   §22.4): the `alt` shown as intentional copy, never a broken-image glyph. */
+.img-fallback-box {{ display:flex; flex-direction:column; gap:.3rem; align-items:center;
+  justify-content:center; text-align:center; padding:1.4rem 1rem; border:1px dashed var(--border);
+  border-radius:8px; background:var(--bg); color:var(--muted); }}
+.img-fallback-alt {{ color:var(--text); font-size:.92rem; }}
 /* §21.3 progressive disclosure via native <details> (no JS for the fold
    itself). Summary is the block's title/lead; the body -- the block's own card
    plus its ✎ box -- expands on click. */

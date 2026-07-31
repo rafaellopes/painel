@@ -592,6 +592,7 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
         # rendering path.
         ctx = {"index": index, "total": total_n,
                "agent_status": current_agent_status,
+               "base_path": base_path,  # M18 (§22.4): image src → …/asset?p=
                "render_block": _render_one}
         inner = _block_html(b, ctx)
         return _wrap_block(b, inner, str(b.get("id")) in pending_ids, hero_used)
@@ -955,6 +956,50 @@ def save_uploads(board_path: str, block_id, parsed: list) -> tuple:
     return events, None
 
 
+# --------------------------------------------------------------------------- #
+# The `image` block's contained read endpoint (M18, docs/SPEC.md §22.3).       #
+# The exact inverse of save_uploads() above (write→read), sharing _contain():  #
+# a project-relative `p` is served ONLY when it stays inside the project dir    #
+# AND carries a whitelisted image extension. Images-only by design so this can  #
+# never become a generic project-file exfiltration primitive.                  #
+# --------------------------------------------------------------------------- #
+ASSET_CONTENT_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".svg": "image/svg+xml",  # served as a subresource: <img> neuters its script (§22.3.3)
+}
+
+
+def read_asset(board_path: str, relpath: str) -> tuple:
+    """Resolve a project-relative `relpath` to (content_bytes, content_type),
+    or (None, None) when it must not be served (§22.3): the path escapes the
+    project dir, has a non-whitelisted extension, or does not exist / is not a
+    regular file. Fail-closed and byteless in every refusal case — the caller
+    turns None into a bare 404 that never confirms an out-of-project path's
+    existence."""
+    if not relpath:
+        return None, None
+    ext = os.path.splitext(relpath)[1].lower()
+    ctype = ASSET_CONTENT_TYPES.get(ext)
+    if ctype is None:
+        return None, None  # non-image extension → 404 (not a generic file server)
+    project_dir = os.path.dirname(os.path.abspath(board_path))
+    target = os.path.normpath(os.path.join(project_dir, relpath))
+    resolved = _contain(project_dir, target)
+    if resolved is None:
+        return None, None  # escaped the project dir → 404, no bytes
+    if not os.path.isfile(resolved):
+        return None, None
+    try:
+        with open(resolved, "rb") as fh:
+            return fh.read(), ctype
+    except OSError:
+        return None, None
+
+
 class _Routes:
     """HTTP plumbing + the three things "serving a board" means, shared by the
     single-board handler and the unified service (M13).
@@ -1047,6 +1092,20 @@ class _Routes:
             emit_event(ev, board_path if log_to_board else None)
         self._send(200, b'{"ok":true}', "application/json")
 
+    def _handle_asset(self, board_path: str, relpath) -> None:
+        """GET /asset?p=<relpath> (single-board) or /<slug>/asset (service),
+        M18 §22.3. Derives its target board exactly like /event does, then
+        serves the local image through read_asset() with realpath containment +
+        an images-only extension/Content-Type whitelist. Any refusal (escape,
+        non-image, missing) → a bare 404 with no bytes (do not confirm the
+        existence of paths outside the project). `Cache-Control: no-store` so a
+        changed asset is never served stale (§22.3.4) -- _send already sets it."""
+        content, ctype = read_asset(board_path, relpath or "")
+        if content is None:
+            self._send(404, b"not found", "text/plain")
+            return
+        self._send(200, content, ctype)
+
 
 # --------------------------------------------------------------------------- #
 # Single-board mode: `painel serve <board>` (unchanged, docs/SPEC.md §17.5)   #
@@ -1071,6 +1130,10 @@ class _Handler(_Routes, BaseHTTPRequestHandler):
             # change -- see docs/SPEC.md §11.2).
             qs = parse_qs(parsed.query)
             self._send_board_page(self.board_path, qs.get("page", [None])[0])
+        elif path == "/asset":
+            # M18 (§22.3): contained, images-only read endpoint for the image
+            # block. Same board resolution as /event; realpath-contained inside.
+            self._handle_asset(self.board_path, parse_qs(parsed.query).get("p", [None])[0])
         elif path not in ("/version", "/event", "/upload"):
             # Any other path segment is treated as a page name, e.g.
             # "/Estrat%C3%A9gia" -> page "Estratégia". render() already
@@ -1167,6 +1230,10 @@ class _ServiceHandler(_Routes, BaseHTTPRequestHandler):
         base_path = f"/{entry['slug']}"
         if rest == "version":
             self._send_version(entry["path"])
+        elif rest == "asset":
+            # M18 (§22.3): images-only, realpath-contained. Same board
+            # resolution as /<slug>/event; the relpath rides the query string.
+            self._handle_asset(entry["path"], parse_qs(parsed.query).get("p", [None])[0])
         elif rest in ("event", "upload"):
             self._send(404, b"not found", "text/plain")  # POST-only, same as pre-M13's /event
             return

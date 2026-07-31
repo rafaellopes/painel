@@ -153,6 +153,26 @@ def _demo_board() -> dict:
              "title": "Full reference notes (click to expand)",
              "text": "Long-form detail lives here, folded away by default so the "
                      "board stays scannable — expand it only when you need it."},
+            {"id": "h9", "type": "heading", "text": "A picture beside the text (M18)"},
+            # image (§22): a figure next to the text that reads it. An inline
+            # `data:` SVG keeps the demo self-contained (no binary in the repo)
+            # and shows the composition M18 unlocks -- image + note side by side.
+            {"id": "g2", "type": "group", "layout": "columns",
+             "title": "Figure + reading", "blocks": [
+                 {"id": "img1", "type": "image",
+                  "src": "data:image/svg+xml;utf8,"
+                         "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>"
+                         "<circle cx='60' cy='60' r='52' fill='none' stroke='%237dd3fc' stroke-width='6'/>"
+                         "<path d='M60 18 V60 L88 74' fill='none' stroke='%237dd3fc' stroke-width='6' "
+                         "stroke-linecap='round'/></svg>",
+                  "alt": "A clock face at ten past two",
+                  "caption": "Inline **data:** SVG — no file, no fetch.",
+                  "max_width": "220px"},
+                 {"id": "img1txt", "type": "markdown",
+                  "text": "The agent decided the clearest way to explain this was a "
+                          "figure beside the text — so it composed a `group` with an "
+                          "`image` in one column and this `markdown` in the other."},
+             ]},
         ],
         "change_requests": [
             {"id": "cr1", "block": "pl", "text": "add a user-testing phase",

@@ -17,7 +17,7 @@ class RegistryTest(unittest.TestCase):
         expected = {
             "heading", "markdown", "note", "tasks", "plan", "checklist",
             "question", "choice", "approval", "form", "log", "chat", "resources",
-            "upload", "group",
+            "upload", "group", "image",
         }
         self.assertEqual(expected, set(REGISTRY.keys()))
 

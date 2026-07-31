@@ -1125,5 +1125,58 @@ class SingleBoardServeUnchangedTest(unittest.TestCase):
         self.assertIn("Bloco da Home", body)
 
 
+class AssetServiceTest(_RunningServiceMixin, unittest.TestCase):
+    """M18 (docs/SPEC.md §22.3): /<slug>/asset serves whitelisted images from
+    THAT board's own project dir, realpath-contained. Same board resolution as
+    /<slug>/event; images-only by design (no generic file server)."""
+
+    _PNG = bytes.fromhex(
+        "89504e470d0a1a0a0000000d494844520000000100000001080600000"
+        "01f15c4890000000d4944415478da6360000002000155a2b4ec00000000"
+        "49454e44ae426082"
+    )
+
+    def _get_bytes(self, port, path):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}{path}")
+        try:
+            with urllib.request.urlopen(req) as r:
+                return r.status, r.read(), r.headers.get("Content-Type")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read(), exc.headers.get("Content-Type")
+
+    def test_serves_project_image_for_its_slug(self):
+        a = self._project("proj-a", blocks=[])
+        os.makedirs(os.path.join(os.path.dirname(a), "painel-assets"))
+        with open(os.path.join(os.path.dirname(a), "painel-assets", "x.png"), "wb") as fh:
+            fh.write(self._PNG)
+        slug = registry.register(a)
+        port = self._start_service()
+        status, body, ctype = self._get_bytes(port, f"/{slug}/asset?p=painel-assets%2Fx.png")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, self._PNG)
+        self.assertEqual(ctype, "image/png")
+
+    def test_escape_is_404_no_bytes(self):
+        a = self._project("proj-a", blocks=[])
+        slug = registry.register(a)
+        port = self._start_service()
+        status, body, _ = self._get_bytes(port, f"/{slug}/asset?p=..%2F..%2F..%2Fetc%2Fpasswd")
+        self.assertEqual(status, 404)
+        self.assertNotIn(b"root:", body)
+
+    def test_asset_of_board_a_not_reachable_via_slug_b(self):
+        """Per-board isolation: A's asset is served under A's slug, and B's slug
+        (whose project dir has no such file) 404s -- the containment is per the
+        resolved board, exactly like /event/upload."""
+        a = self._project("proj-a", blocks=[])
+        b = self._project("proj-b", blocks=[])
+        with open(os.path.join(os.path.dirname(a), "only-in-a.png"), "wb") as fh:
+            fh.write(self._PNG)
+        slug_a, slug_b = registry.register(a), registry.register(b)
+        port = self._start_service()
+        self.assertEqual(self._get_bytes(port, f"/{slug_a}/asset?p=only-in-a.png")[0], 200)
+        self.assertEqual(self._get_bytes(port, f"/{slug_b}/asset?p=only-in-a.png")[0], 404)
+
+
 if __name__ == "__main__":
     unittest.main()

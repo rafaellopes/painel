@@ -217,6 +217,8 @@ Block types:
 - `group` — a **layout container**, not content of its own: it arranges other blocks. `{ "type":"group", "layout":"columns|stack", "title":"optional label", "blocks":[ /* nested blocks, each with its own id */ ] }`. `columns` lays children side-by-side (wrapping to a stack on a narrow screen); `stack` (default) is a titled section. Nested blocks are ordinary blocks — same ids (globally unique), same events, same attention/`#blk-<id>` behaviour: a pending `question` inside a group still shows in the attention bar. **One level only — a group may not contain a group** (a nested group is flattened). A group carries a `page` like any block; its children inherit it. See "Adaptive layout & phase" below for when to reach for it.
 - `upload` — the human hands **files** (images, a PDF, a whole folder) to you. The inverse of `resources`: `resources` shows files *to* the human, `upload` lets them drop files *for* you into a destination **you** choose. `{ "type":"upload", "prompt":"Drag your screenshots here", "accept":".png,.jpg", "dest_dir":"docs/screenshots", "multiple":true, "directory":false, "files":[] }`. `dest_dir` is **relative to the project directory** (where board.json lives) — you pick it, so the human never has to know or ask a path. On each drop the server writes the file (sanitized name, 25 MB cap, collision-suffixed, never escaping the project dir), appends `{name,path,size}` to `files[]`, and emits a **non-silent** `file_added {block,name,path,size}` event — react to it (read the real path from `files[]`, or show the files back with a `resources` block). Pending in the attention bar while `files` is empty (waiting on the human), resolved once ≥1 file lands. There is also a persistent global "📎 Send files to the agent" affordance at the bottom of every board (drops into `painel-uploads/`, emits `file_added` with `block:null`) — so even without an `upload` block, "where do I put this?" can never arise. **If you need a FILE from the human, that's an `upload` block, not a checklist item that names a path** (see "Checklist vs question/form" — an unclear "Drop the screenshots in docs/screenshots/" step forces the human to know a path and ask; an `upload` block with the `dest_dir` you chose just gives them a drop target).
 
+- `image` — a **picture beside the text**, for when the clearest way to explain a subject is visual (a chart, a diagram, a generated figure) rather than prose. The inverse of `upload` (upload writes human→disk; `image` reads disk→page). `{ "type":"image", "src":"painel-assets/chart.svg", "alt":"Natal chart for 12 May 1988", "caption":"Sun in Taurus", "max_width":"420px", "fit":"contain" }`. `src` is **either a project-relative path** (save the asset under `painel-assets/` first — you generate/obtain it, pAInel never fetches or generates images) **or a small inline `data:` URI** (SVG text or base64, no file needed). `alt` is **required** (accessibility + the fallback shown if the image is missing). `caption`/`max_width`/`fit` (`contain|cover`) are optional. Read-only — no events. **Never a remote `http(s)` URL** — it is refused and shows the alt fallback, never fetched (the security line: no SSRF, no tracking pixel); if you need an external image, download it into the project dir first and point `src` at the local copy. **One image per block** — multiple images = multiple blocks (put them in a `group`). See "When to reach for `image`" below.
+
 ## Multi-page boards
 
 Boards past ~15-20 blocks turn into an undifferentiated scroll — the same
@@ -274,6 +276,27 @@ as multi-page: they earn their place only once a board is genuinely large.
 Reach for these the way you reach for multi-page: when the board is big enough
 that a flat single column is itself the "lost in the chat" problem. On a short
 board, plain stacked cards are correct.
+
+### When to reach for `image`
+
+You decide, per subject, the clearest way to explain it. Sometimes that answer
+is **visual** — a chart, a diagram, a generated figure the text refers to. When
+it is, save the asset into the project dir (convention: `painel-assets/`) or
+build a small `data:` SVG, and show it with an `image` block — typically in one
+column of a `group:columns` beside a `note`/`markdown` that reads it (image +
+explanation side by side). That's the composition `image` exists for: the
+figure and the words about it, together, instead of prose alone. pAInel stays
+domain-agnostic — it never learns what the picture *means*; you bring the
+understanding, it just places a local image next to text.
+
+- **Local assets or `data:` only — never a remote URL.** A remote `http(s)`
+  `src` is refused (shows the alt fallback, never fetched). If you need an
+  external image, download it into the project dir first, then reference the
+  local copy.
+- **One image per block.** Several figures = several `image` blocks (group them
+  if they belong together).
+- Always give a real `alt` — it's the accessibility text and the fallback shown
+  if the file is missing.
 
 ## Checklist vs question/form — don't hide data behind a checkbox
 
