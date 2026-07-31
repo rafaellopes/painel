@@ -19,12 +19,12 @@ def render(block: dict, ctx: dict) -> str:
             f'<li><span class="dot {e(st)}"></span>'
             f'<span class="{tc}">{e(it.get("text", ""))}</span></li>'
         )
-    title = e(block.get("title", "Progresso"))
+    title = e(block.get("title", "Progress"))
     return (
         f'<div class="card"><h3>{title}</h3>'
         f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div></div>'
         f'<ul class="tasks">{"".join(rows)}</ul>'
-        f'<div class="muted small">{done}/{total} concluídas</div></div>'
+        f'<div class="muted small">{done}/{total} done</div></div>'
     )
 
 

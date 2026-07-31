@@ -139,13 +139,13 @@ and cut it back to the pointer.
 ## Change requests — the human initiates something
 
 Every block gets a small ✎ button for free (you never add this yourself —
-pAInel injects it into every card), plus a persistent "➕ Pedir alteração,
-nova tarefa, ou rever algo" affordance near the bottom of the page. Both
+pAInel injects it into every card), plus a persistent "➕ Request a change,
+add a task, or revisit something" affordance near the bottom of the page. Both
 post the same event:
 
 ```json
-{"event":"change_request", "block":"regras", "value":"o prazo passa a 12h"}
-{"event":"change_request", "block":null,     "value":"adiciona uma fase de testes"}
+{"event":"change_request", "block":"rules", "value":"the deadline moves to 12h"}
+{"event":"change_request", "block":null,    "value":"add a testing phase"}
 ```
 
 `block` is the id of the card the ✎ was clicked on, or `null`/absent for the
@@ -163,7 +163,7 @@ specific item is unclear rather than the whole block — the human ticking a
 box shouldn't be their only way to react to a step they don't understand.
 Same event, with an extra `item`:
 ```json
-{"event":"change_request", "block":"prep", "item":"p2", "value":"não sei onde arranjar isto"}
+{"event":"change_request", "block":"prep", "item":"p2", "value":"I don't know where to get this"}
 ```
 The resulting `change_requests` entry carries `"item":"p2"` alongside
 `"block"` — resolve it exactly like any other (edit the item, answer the
@@ -212,9 +212,9 @@ Block types:
 - `approval` — `{ "type":"approval", "prompt":"...", "decision":null }`
 - `form` — `{ "type":"form", "prompt":"...", "fields":[{"id":"f1","label":"...","kind":"text|number|date|email|textarea|select","options":[...],"value":""}], "submitted":false }`
 - `log` — `{ "type":"log", "title":"...", "entries":[{"ts":"HH:MM","text":"..."}] }`
-- `chat` — free-form conversation, a substitute for a separate terminal for day-to-day dialogue. `{ "type":"chat", "title":"Conversa", "messages":[{"from":"user","text":"..."},{"from":"agent","text":"..."}] }`. The human's replies arrive as a **non-silent** `chat_message` event (append `{"from":"user","text":value}` to `messages` and reply by appending your own `{"from":"agent","text":...}` before saving the board). Only compose one `chat` block per board (top-level). It never contributes to the attention bar — a message awaiting your reply is *your* turn, not the human's, so it's surfaced via `meta.agent_status` (the same 🟢/🟡/⚪ chip shown in the page header) rather than the yellow "à tua espera" bar.
-- `resources` — docs/mockups/reference links that stay current on their own, no re-describing needed as they change. Read-only, no events. `{ "type":"resources", "title":"...", "items":[{"label":"...","kind":"file","path":"/abs/path"},{"label":"...","kind":"folder","path":"/abs/path"},{"label":"...","kind":"url","url":"https://..."}] }`. `file`/`folder` items show a live "atualizado há Xm/h/d" freshness string (computed fresh on every request) and the whole page auto-refreshes whenever one of those paths changes on disk — you never need to touch board.json just because a linked file changed. A missing path shows a visible "⚠ ficheiro não encontrado" warning instead of disappearing. Use absolute paths only (this only makes sense when the human and you share a machine).
-- `upload` — the human hands **files** (images, a PDF, a whole folder) to you. The inverse of `resources`: `resources` shows files *to* the human, `upload` lets them drop files *for* you into a destination **you** choose. `{ "type":"upload", "prompt":"Arrasta aqui os screenshots", "accept":".png,.jpg", "dest_dir":"docs/screenshots", "multiple":true, "directory":false, "files":[] }`. `dest_dir` is **relative to the project directory** (where board.json lives) — you pick it, so the human never has to know or ask a path. On each drop the server writes the file (sanitized name, 25 MB cap, collision-suffixed, never escaping the project dir), appends `{name,path,size}` to `files[]`, and emits a **non-silent** `file_added {block,name,path,size}` event — react to it (read the real path from `files[]`, or show the files back with a `resources` block). Pending in the attention bar while `files` is empty (waiting on the human), resolved once ≥1 file lands. There is also a persistent global "📎 Enviar ficheiros para o agente" affordance at the bottom of every board (drops into `painel-uploads/`, emits `file_added` with `block:null`) — so even without an `upload` block, "where do I put this?" can never arise. **If you need a FILE from the human, that's an `upload` block, not a checklist item that names a path** (see "Checklist vs question/form" — an unclear "Largar os screenshots em docs/screenshots/" step forces the human to know a path and ask; an `upload` block with the `dest_dir` you chose just gives them a drop target).
+- `chat` — free-form conversation, a substitute for a separate terminal for day-to-day dialogue. `{ "type":"chat", "title":"Conversation", "messages":[{"from":"user","text":"..."},{"from":"agent","text":"..."}] }`. The human's replies arrive as a **non-silent** `chat_message` event (append `{"from":"user","text":value}` to `messages` and reply by appending your own `{"from":"agent","text":...}` before saving the board). Only compose one `chat` block per board (top-level). It never contributes to the attention bar — a message awaiting your reply is *your* turn, not the human's, so it's surfaced via `meta.agent_status` (the same 🟢/🟡/⚪ chip shown in the page header) rather than the yellow "waiting on you" bar.
+- `resources` — docs/mockups/reference links that stay current on their own, no re-describing needed as they change. Read-only, no events. `{ "type":"resources", "title":"...", "items":[{"label":"...","kind":"file","path":"/abs/path"},{"label":"...","kind":"folder","path":"/abs/path"},{"label":"...","kind":"url","url":"https://..."}] }`. `file`/`folder` items show a live "updated Xm/h/d ago" freshness string (computed fresh on every request) and the whole page auto-refreshes whenever one of those paths changes on disk — you never need to touch board.json just because a linked file changed. A missing path shows a visible "⚠ file not found" warning instead of disappearing. Use absolute paths only (this only makes sense when the human and you share a machine).
+- `upload` — the human hands **files** (images, a PDF, a whole folder) to you. The inverse of `resources`: `resources` shows files *to* the human, `upload` lets them drop files *for* you into a destination **you** choose. `{ "type":"upload", "prompt":"Drag your screenshots here", "accept":".png,.jpg", "dest_dir":"docs/screenshots", "multiple":true, "directory":false, "files":[] }`. `dest_dir` is **relative to the project directory** (where board.json lives) — you pick it, so the human never has to know or ask a path. On each drop the server writes the file (sanitized name, 25 MB cap, collision-suffixed, never escaping the project dir), appends `{name,path,size}` to `files[]`, and emits a **non-silent** `file_added {block,name,path,size}` event — react to it (read the real path from `files[]`, or show the files back with a `resources` block). Pending in the attention bar while `files` is empty (waiting on the human), resolved once ≥1 file lands. There is also a persistent global "📎 Send files to the agent" affordance at the bottom of every board (drops into `painel-uploads/`, emits `file_added` with `block:null`) — so even without an `upload` block, "where do I put this?" can never arise. **If you need a FILE from the human, that's an `upload` block, not a checklist item that names a path** (see "Checklist vs question/form" — an unclear "Drop the screenshots in docs/screenshots/" step forces the human to know a path and ask; an `upload` block with the `dest_dir` you chose just gives them a drop target).
 
 ## Multi-page boards
 
@@ -239,7 +239,7 @@ there's no separate page list to keep in sync.
   "leave open"; just link to `?page=<name>` in your own chat output the same
   way you already link to `#blk-<id>`.
 
-Use it to group by theme/workstream (e.g. "Financeiro", "Legal", "Operações")
+Use it to group by theme/workstream (e.g. "Finance", "Legal", "Operations")
 once a single board is doing double or triple duty. Don't reach for it on
 small boards — it adds visual structure only once there's enough content to
 justify it.
@@ -252,25 +252,25 @@ the file". It's the wrong block the moment the step implies information you
 still need back from the human, and the tick would silently swallow it:
 
 ```
-❌ checklist: "Ter pelo menos 2 contas de condutor de teste, associadas à mesma frota/gestor"
+❌ checklist: "Have at least 2 test driver accounts, tied to the same fleet/manager"
 ```
 Marking that done tells you nothing — you still don't have the two accounts.
 The right shape asks for them directly:
 ```
-✅ form: prompt "Contas de condutor de teste (mesma frota/gestor)",
-   fields: [{"id":"c1","label":"Conta 1 (email)","kind":"email","value":""},
-            {"id":"c2","label":"Conta 2 (email)","kind":"email","value":""}]
+✅ form: prompt "Test driver accounts (same fleet/manager)",
+   fields: [{"id":"c1","label":"Account 1 (email)","kind":"email","value":""},
+            {"id":"c2","label":"Account 2 (email)","kind":"email","value":""}]
 ```
-Same pattern for "Confirmar com o sócio: X ou Y?" (that's a `choice` or
-`question`, not a checkbox) and "Definir os fusos-alvo para o teste" (a
+Same pattern for "Confirm with the partner: X or Y?" (that's a `choice` or
+`question`, not a checkbox) and "Set the target time zones for the test" (a
 `form` field, or a `question` if free text is fine). Before writing a
 checklist item, ask: *if this gets ticked, do I have everything I need, or
 am I still missing a value?* If you're missing a value, it's a
 `question`/`choice`/`form` item — reserve `checklist` for steps whose only
 output is "did you do it". And if what you need back is **files** (images, a
 PDF, a folder), that's an `upload` block, **not** a checklist item that names
-a path: "Largar os 5 screenshots em docs/screenshots/" makes the human learn a
-path and drop blindly (and then ask "onde?"); an `upload` block with the
+a path: "Drop the 5 screenshots in docs/screenshots/" makes the human learn a
+path and drop blindly (and then ask "where?"); an `upload` block with the
 `dest_dir` you chose just gives them a drop target and hands you the real
 paths via `file_added`.
 
@@ -287,9 +287,9 @@ asks them to tick it off for you.
 
 Real case caught live: a test plan board had items like
 ```
-❌ checklist: "COND-1: Login com condutor em Europe/Lisbon — confirmar que
-   todas as horas exibidas (atividade atual, histórico, notificações) estão
-   corretas"
+❌ checklist: "COND-1: Log in as a driver in Europe/Lisbon — confirm that
+   all displayed times (current activity, history, notifications) are
+   correct"
 ```
 This is a browser-testable step — logging into a web app and reading what's
 on screen is exactly the kind of thing you can drive yourself. Handing it to
@@ -299,13 +299,13 @@ the test ran when it didn't. The right shape is `tasks`/`plan`, updated by
 *you* as you actually execute each check, with real results going in a
 `log` entry (or a `table` once M2 ships) — not a checkbox the human ticks:
 ```
-✅ plan: items: [{"id":"cond1","text":"COND-1: horas corretas em Europe/Lisbon","status":"pending"}, ...]
+✅ plan: items: [{"id":"cond1","text":"COND-1: times correct in Europe/Lisbon","status":"pending"}, ...]
 ```
 you run each step, flip `status` to `done`/`blocked` yourself, and log what
 you actually found. Reserve `checklist` for things genuinely outside your
-reach: physical actions ("assina o documento"), access only the human has
-("faz login com a tua conta pessoal do banco"), or judgment only they can
-give ("confirma que este texto soa bem"). When in doubt, the test is: *if I
+reach: physical actions ("sign the document"), access only the human has
+("log in with your personal bank account"), or judgment only they can
+give ("confirm this copy reads well"). When in doubt, the test is: *if I
 tried to do this myself right now, would I succeed, or would I be blocked
 on something only the human has?* Blocked-on-something-only-they-have is
 the only case that's really a `checklist`.
@@ -323,10 +323,12 @@ painel lint <dir|board.json>
 ```
 
 It exits **1** if any `checklist` item looks like it wants an *answer* rather
-than a *tick* (ends with `?`, or contains a marker like `responder`,
-`indicar`, `qual`, `quanto`, `definir`, `escolher`, `preencher`, `dá-me`,
-`confirmar com`), printing each offender with its block id, item id, text and
-the suggested block type. Exit **0** means clean.
+than a *tick* (ends with `?`, or contains a marker like `answer`, `which`,
+`how many`, `provide`, `specify`, `fill in`, `tell me`, `confirm with` — the
+marker list is **bilingual**, so it also catches the Portuguese equivalents
+`responder`, `qual`, `quanto`, `preencher`, `indicar`, `confirmar com`, etc.),
+printing each offender with its block id, item id, text and the suggested block
+type. Exit **0** means clean.
 
 **The step:** after you write or update a board — every time, before you tell
 the human it's ready — run `painel lint`. If it exits 1, fix what it flags by

@@ -11,13 +11,13 @@ def render(block: dict, ctx: dict) -> str:
     prompt = md_inline(e(block.get("prompt", "")))
     if block.get("answer") not in (None, ""):
         return (
-            f'<div class="card answered"><h3>Pergunta</h3><p>{prompt}</p>'
-            f'<div class="answer">Resposta: {e(block.get("answer"))}</div></div>'
+            f'<div class="card answered"><h3>Question</h3><p>{prompt}</p>'
+            f'<div class="answer">Answer: {e(block.get("answer"))}</div></div>'
         )
     return (
-        f'<div class="card"><h3>Pergunta</h3><p>{prompt}</p>'
-        f'<textarea id="ta-{bid}" data-orig="" placeholder="Escreve a tua resposta..."></textarea>'
-        f'<button onclick="answer(\'{bid}\')">Enviar</button></div>'
+        f'<div class="card"><h3>Question</h3><p>{prompt}</p>'
+        f'<textarea id="ta-{bid}" data-orig="" placeholder="Type your answer…"></textarea>'
+        f'<button onclick="answer(\'{bid}\')">Send</button></div>'
     )
 
 
@@ -31,7 +31,7 @@ def apply(block: dict, event: dict) -> bool:
 def needs_user(block: dict) -> list:
     bid = block.get("id", "")
     if block.get("answer") in (None, ""):
-        return [(bid, "Pergunta por responder")]
+        return [(bid, "Question to answer")]
     return []
 
 

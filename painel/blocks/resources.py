@@ -6,7 +6,7 @@ live-freshness feature is two layers, both computed fresh on every request
 (no caching, same spirit as `_needs_user()`/the hub's registry re-read):
 
 1. Per-item: `render()` stats each `file`/`folder` path at render time and
-   shows a relative "atualizado há Xm/h/d" string (§15.2 point 1). A missing
+   shows a relative "updated Xm/h/d ago" string (§15.2 point 1). A missing
    path renders a visible warning instead of crashing or vanishing.
 2. Page-level: `watched_paths()` (the new optional block-module hook, §2.1)
    returns every `file`/`folder` path so server.py's /version handler can
@@ -21,7 +21,7 @@ from .base import e, relative_time
 TYPE = "resources"
 
 STRINGS = {
-    "missing": "⚠ ficheiro não encontrado",
+    "missing": "⚠ file not found",
 }
 
 _IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp")
@@ -73,7 +73,7 @@ def _item_html(item: dict) -> str:
 def render(block: dict, ctx: dict) -> str:
     items = block.get("items", [])
     rows = "".join(_item_html(it) for it in items)
-    title = e(block.get("title", "Documentos e mockups"))
+    title = e(block.get("title", "Documents & mockups"))
     return f'<div class="card"><h3>{title}</h3><ul class="res-list">{rows}</ul></div>'
 
 

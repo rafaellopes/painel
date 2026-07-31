@@ -56,7 +56,7 @@ class UnknownBlockRenderTest(unittest.TestCase):
     def test_unknown_type_renders_fallback(self):
         board = {"blocks": [{"id": "x", "type": "totally_unknown"}]}
         html = srv.render(board)
-        self.assertIn("bloco desconhecido", html)
+        self.assertIn("unknown block", html)
         self.assertIn("totally_unknown", html)
 
 
@@ -234,7 +234,7 @@ class ChangeRequestTest(unittest.TestCase):
         self.assertIn("crToggleGlobal()", html)
         self.assertIn('id="cr-box-global"', html)
         self.assertIn("crSendGlobal()", html)
-        self.assertIn("Pedir alteração", html)
+        self.assertIn("Request a change", html)
 
     def test_open_change_requests_render_as_own_card(self):
         board = {"blocks": [{"id": "regras", "type": "markdown", "text": "x"}],
@@ -243,7 +243,7 @@ class ChangeRequestTest(unittest.TestCase):
                  ]}
         html = srv.render(board)
         self.assertIn('class="card cr-card"', html)
-        self.assertIn("Pedidos em aberto", html)
+        self.assertIn("Open requests", html)
         self.assertIn("o prazo passa a 12h", html)
         self.assertIn("#blk-regras", html)
 
@@ -362,7 +362,7 @@ class WhoseTurnSignalTest(unittest.TestCase):
 
     def test_title_pending_beats_status(self):
         html = srv.render(self._board(agent_status="idle"))
-        self.assertIn("<title>🔴 1 à tua espera — Board</title>", html)
+        self.assertIn("<title>🔴 1 waiting on you — Board</title>", html)
 
     def test_title_working_no_pending(self):
         board = self._board(agent_status="working")
@@ -390,19 +390,19 @@ class WhoseTurnSignalTest(unittest.TestCase):
 
     def test_chip_pending(self):
         html = srv.render(self._board(agent_status="working"))
-        self.assertIn('🔴 À espera de ti (1)', html)
+        self.assertIn('🔴 Waiting on you (1)', html)
 
     def test_chip_working(self):
         board = self._board(agent_status="working")
         board["blocks"][0]["items"][0]["checked"] = True
         html = srv.render(board)
-        self.assertIn("🟡 O agente está a trabalhar…", html)
+        self.assertIn("🟡 The agent is working…", html)
 
     def test_chip_idle_no_resolved_blocks(self):
         board = self._board(agent_status="idle")
         board["blocks"][0]["items"][0]["checked"] = True
         html = srv.render(board)
-        self.assertIn("⚪ Agente offline", html)
+        self.assertIn("⚪ Agent offline", html)
 
     def test_chip_idle_with_resolved_block_shows_done(self):
         board = {
@@ -411,7 +411,7 @@ class WhoseTurnSignalTest(unittest.TestCase):
             "blocks": [{"id": "q1", "type": "question", "prompt": "?", "answer": "42"}],
         }
         html = srv.render(board)
-        self.assertIn("✅ Tudo feito", html)
+        self.assertIn("✅ All done", html)
 
     def test_favicon_link_present_for_js_swap(self):
         html = srv.render(self._board())
@@ -720,9 +720,9 @@ class UploadSafetyUnitTest(unittest.TestCase):
         self.assertEqual(srv.sanitize_filename("../../etc/passwd"), "passwd")
         self.assertEqual(srv.sanitize_filename("/abs/evil.png"), "evil.png")
         self.assertEqual(srv.sanitize_filename("a b/c.txt"), "c.txt")
-        self.assertEqual(srv.sanitize_filename(".."), "ficheiro")
+        self.assertEqual(srv.sanitize_filename(".."), "file")
         self.assertEqual(srv.sanitize_filename(".hidden"), "hidden")
-        self.assertEqual(srv.sanitize_filename(""), "ficheiro")
+        self.assertEqual(srv.sanitize_filename(""), "file")
         self.assertEqual(srv.sanitize_filename("good_name-2.png"), "good_name-2.png")
 
     def test_contain_refuses_escape(self):
@@ -828,7 +828,7 @@ class UploadEndpointTest(unittest.TestCase):
         big = b"x" * (srv.MAX_UPLOAD_BYTES + 1)
         status, body = self._post_upload([("file", "big.bin", big)])
         self.assertEqual(status, 413)
-        self.assertIn("grande", body)
+        self.assertIn("too large", body)
         self.assertEqual(os.listdir(os.path.join(self.proj, "docs", "shots"))
                          if os.path.exists(os.path.join(self.proj, "docs", "shots")) else [], [])
 

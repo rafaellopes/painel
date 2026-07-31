@@ -39,6 +39,40 @@ PLAIN_ACTIONS = [
     "Colocar o ficheiro em ~/Downloads",
 ]
 
+# The marker list is BILINGUAL (§20.1): the international audience composes
+# English boards, so the English direct equivalents of the earned Portuguese
+# markers must fire, and plain English actions must NOT -- the exact same
+# false-negative-over-false-positive contract, on the English side.
+ENGLISH_PLAIN_ACTIONS = [
+    "Log in to portal X",
+    "Download the report PDF",
+    "Publish the Show HN",
+    "Record a ~10s demo GIF",
+    "Put the file in ~/Downloads",
+    "Confirm the deploy went through",   # bare "confirm", not "confirm with"
+]
+
+# English answer-requests that MUST flag, one per English marker (plus a
+# trailing-'?' case), mirroring the Portuguese positives.
+ENGLISH_FLAGGED = [
+    "Answer the GitHub profile README questions",   # answer
+    "Provide the company IBAN",                     # provide
+    "Specify the contact email",                    # specify
+    "Fill in the client details",                   # fill in
+    "Tell me the destination address",              # tell me
+    "Confirm with the partner: option A or B",      # confirm with
+    "How many test drivers do we need",             # how many
+    "Which report format do you want",              # which
+]
+
+# English words that merely CONTAIN a marker as a substring must not fire --
+# the word-boundary guard has to hold on the English side too.
+ENGLISH_WORD_BOUNDARY_NEGATIVES = [
+    "Review whichever build passes",   # "which" inside "whichever"
+    "Archive the answered tickets",    # "answer" inside "answered"
+    "Update the provider config",      # "provide" inside "provider"
+]
+
 # The two REAL false positives that the first shipped version of this linter
 # produced, found by running it over 59 checklist items across 7 of the
 # author's actual boards (§20.5). Both came from "escolhe(r)", which was
@@ -95,6 +129,31 @@ class HeuristicTest(unittest.TestCase):
             with self.subTest(text=text):
                 self.assertIsNone(lint.check_text(text))
 
+    def test_english_plain_actions_are_never_flagged(self):
+        for text in ENGLISH_PLAIN_ACTIONS:
+            with self.subTest(text=text):
+                self.assertIsNone(lint.check_text(text))
+
+    def test_english_answer_requests_are_flagged(self):
+        for text in ENGLISH_FLAGGED:
+            with self.subTest(text=text):
+                self.assertIsNotNone(lint.check_text(text))
+
+    def test_english_word_boundaries_prevent_false_positives(self):
+        for text in ENGLISH_WORD_BOUNDARY_NEGATIVES:
+            with self.subTest(text=text):
+                self.assertIsNone(lint.check_text(text))
+
+    def test_removed_choose_select_markers_stay_removed(self):
+        """§20.5: "escolher"/"escolhe"/"definir" were dropped after real false
+        positives, so their English equivalents ("choose"/"select"/"define")
+        must never be re-added -- they would reintroduce the same class."""
+        for text in ("Choose one and instrument a product of yours",
+                     "Select the onboarding copy to change",
+                     "Define the primary metric"):
+            with self.subTest(text=text):
+                self.assertIsNone(lint.check_text(text))
+
     def test_real_measured_false_positives_stay_unflagged(self):
         """Regression guard from dogfooding: the first shipped heuristic
         flagged these two real items (and nothing else) across the author's
@@ -112,7 +171,7 @@ class HeuristicTest(unittest.TestCase):
         self.assertIsNotNone(lint.check_text("Está tudo correto?   "))
         self.assertIsNotNone(lint.check_text("**Está tudo correto?**"))
         self.assertIsNotNone(lint.check_text("Está tudo correto? <br>"))
-        self.assertEqual("termina com '?'", lint.check_text("Está tudo correto?"))
+        self.assertEqual("ends with '?'", lint.check_text("Está tudo correto?"))
 
     def test_question_mark_mid_text_alone_is_not_enough(self):
         # No marker, '?' not at the end -> not flagged. Conservative on purpose.
@@ -317,14 +376,14 @@ class LintCliTest(unittest.TestCase):
         with self._board_file(_board(*PLAIN_ACTIONS)) as (_, path):
             code, out, _ = self._run(path)
         self.assertEqual(0, code)
-        self.assertIn("sem problemas", out)
+        self.assertIn("no issues", out)
 
     def test_board_with_no_checklist_blocks_exits_0(self):
         board = {"title": "T", "blocks": [{"id": "q1", "type": "question", "prompt": "Qual?"}]}
         with self._board_file(board) as (_, path):
             code, out, _ = self._run(path)
         self.assertEqual(0, code)
-        self.assertIn("sem problemas", out)
+        self.assertIn("no issues", out)
 
     def test_empty_board_exits_0(self):
         with self._board_file({"title": "T", "blocks": []}) as (_, path):
@@ -339,7 +398,7 @@ class LintCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             code, _, err = self._run(os.path.join(d, "nope.json"))
         self.assertEqual(1, code)
-        self.assertIn("não existe", err)
+        self.assertIn("no board", err)
 
     def test_unreadable_board_exits_1_without_traceback(self):
         with tempfile.TemporaryDirectory() as d:
@@ -348,7 +407,7 @@ class LintCliTest(unittest.TestCase):
                 fh.write("{ not json")
             code, _, err = self._run(path)
         self.assertEqual(1, code)
-        self.assertIn("não consegui ler", err)
+        self.assertIn("could not read", err)
 
 
 if __name__ == "__main__":

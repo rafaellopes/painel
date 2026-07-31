@@ -74,7 +74,19 @@ class Finding(NamedTuple):
 # only "responder", "confirmar com" and the ends-with-"?" rule were actually
 # earned by observed incidents; the rest are unmeasured. Drop any of them at
 # the FIRST real false positive -- do not defend them.
+#
+# BILINGUAL (§20.1): the UI language is English, but the markers match the
+# AGENT-COMPOSED board text, which is a separate axis -- the repo owner composes
+# Portuguese boards, the international audience composes English ones. So the
+# list is bilingual: the original Portuguese markers PLUS the direct English
+# equivalents of the same earned concepts ("answer", "which", "how many",
+# "provide", "specify", "fill in", "tell me", "confirm with"). The English side
+# is deliberately just these direct equivalents -- no speculative additions, and
+# NOT "choose"/"select"/"define" (the English of the escoher/escolhe/definir
+# markers that §20.5 removed after real false positives; they would reintroduce
+# the same class). The ends-with-"?" rule is language-neutral and covers both.
 MARKERS = (
+    # Portuguese
     "responder", "responde",
     "indicar", "indica",
     "informar", "informe",
@@ -83,6 +95,15 @@ MARKERS = (
     "preencher", "preenche",
     "diz-me", "da-me", "envia-me",
     "confirmar com",
+    # English (direct equivalents of the earned Portuguese markers)
+    "answer",
+    "which",
+    "how many",
+    "provide",
+    "specify",
+    "fill in",
+    "tell me",
+    "confirm with",
 )
 
 _MARKER_RE = re.compile(
@@ -100,9 +121,9 @@ SUGGESTION = "question"
 # What the render-time ⚠ says. Layer 3 of §20.2: the copy's whole job is to
 # point the human at the per-item ❓ that M12 already built. No new fix UI.
 WARN_TITLE = (
-    "Este passo parece pedir uma resposta, não um visto ({reason}). "
-    "Marcá-lo não entrega nada ao agente. Usa o ❓ ao lado para pedires "
-    "que seja convertido num bloco de pergunta."
+    "This step looks like it asks for an answer, not a tick ({reason}). "
+    "Checking it off delivers nothing to the agent. Use the ❓ next to it "
+    "to request it be turned into a question block."
 )
 
 
@@ -126,14 +147,14 @@ def _strip_trailing_markup(text: str) -> str:
 
 
 def check_text(text) -> str | None:
-    """The whole heuristic, isolated for testability. Returns a PT-PT reason
+    """The whole heuristic, isolated for testability. Returns an English reason
     string when the text looks like it wants an *answer* rather than a *tick*,
     or None when it looks like a plain action."""
     if _strip_trailing_markup(text).endswith("?"):
-        return "termina com '?'"
+        return "ends with '?'"
     match = _MARKER_RE.search(fold(text))
     if match:
-        return f"contém «{match.group(1)}»"
+        return f'contains "{match.group(1)}"'
     return None
 
 
@@ -226,7 +247,7 @@ def format_finding(finding: Finding, prefix: str = "") -> str:
     """One line, greppable, same shape for the CLI and for the stderr net."""
     where = f"{finding.block}/{finding.item}" if finding.item else finding.block
     return (
-        f"{prefix}checklist {where}: {finding.reason} — parece pedir uma resposta, "
-        f"não um visto; considera o bloco '{finding.suggestion}' "
-        f"(ou 'form' se forem vários campos). Texto: {finding.text!r}"
+        f"{prefix}checklist {where}: {finding.reason} — looks like it asks for an "
+        f"answer, not a tick; consider a '{finding.suggestion}' block "
+        f"(or 'form' if it's several fields). Text: {finding.text!r}"
     )

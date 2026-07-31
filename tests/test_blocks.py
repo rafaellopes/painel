@@ -93,7 +93,7 @@ class TasksTest(unittest.TestCase):
         b = {"id": "t1", "type": "tasks", "title": "Pipeline",
              "items": [{"text": "a", "status": "done"}, {"text": "b", "status": "pending"}]}
         html = render_ctx(tasks, b)
-        self.assertIn("1/2 concluídas", html)
+        self.assertIn("1/2 done", html)
         self.assertIn("width:50%", html)
 
     def test_needs_user_none(self):
@@ -114,7 +114,7 @@ class PlanTest(unittest.TestCase):
 
     def test_render_empty(self):
         html = render_ctx(plan, {"id": "pl", "type": "plan", "items": []})
-        self.assertIn("0/0 concluídos", html)
+        self.assertIn("0/0 done", html)
 
     def test_render_filled(self):
         html = render_ctx(plan, self._board())
@@ -221,7 +221,7 @@ class ChecklistTest(unittest.TestCase):
 class QuestionTest(unittest.TestCase):
     def test_render_empty_prompt(self):
         html = render_ctx(question, {"id": "q1", "type": "question"})
-        self.assertIn("Enviar", html)
+        self.assertIn("Send", html)
 
     def test_render_answered(self):
         html = render_ctx(question, {"id": "q1", "type": "question", "prompt": "?", "answer": "42"})
@@ -291,7 +291,7 @@ class ChoiceTest(unittest.TestCase):
 class ApprovalTest(unittest.TestCase):
     def test_render_empty(self):
         html = render_ctx(approval, {"id": "ap", "type": "approval"})
-        self.assertIn("Aprovar", html)
+        self.assertIn("Approve", html)
 
     def test_render_decided(self):
         html = render_ctx(approval, {"id": "ap", "type": "approval", "prompt": "?",
@@ -332,7 +332,7 @@ class FormTest(unittest.TestCase):
 
     def test_render_empty_fields(self):
         html = render_ctx(form, {"id": "fm", "type": "form", "fields": []})
-        self.assertIn("Enviar", html)
+        self.assertIn("Send", html)
 
     def test_render_filled(self):
         html = render_ctx(form, self._board())
@@ -376,7 +376,7 @@ class FormTest(unittest.TestCase):
 class LogTest(unittest.TestCase):
     def test_render_empty(self):
         html = render_ctx(log, {"id": "lg", "type": "log", "entries": []})
-        self.assertIn("Registo", html)
+        self.assertIn("Log", html)
 
     def test_render_filled(self):
         html = render_ctx(log, {"id": "lg", "type": "log", "entries": [{"ts": "10:00", "text": "início"}]})
@@ -414,7 +414,7 @@ class ChatTest(unittest.TestCase):
         b = {"id": "chat", "type": "chat", "messages": []}
         html = chat.render(b, {"index": 0, "total": 1, "agent_status": "working"})
         self.assertIn("chat-chip", html)
-        self.assertIn("a trabalhar", html)
+        self.assertIn("working", html)
 
     def test_render_no_chip_when_agent_status_absent(self):
         html = render_ctx(chat, {"id": "chat", "type": "chat", "messages": []})
@@ -475,23 +475,23 @@ class ResourcesTest(unittest.TestCase):
                 {"label": "Mockup", "kind": "file", "path": path},
             ]}
             html = render_ctx(resources, b)
-            self.assertIn("atualizado", html)
-            self.assertNotIn("não encontrado", html)
+            self.assertIn("updated", html)
+            self.assertNotIn("not found", html)
 
     def test_render_missing_path_shows_warning_not_crash(self):
         b = {"id": "res1", "type": "resources", "items": [
             {"label": "Ficheiro perdido", "kind": "file", "path": "/no/such/path.pdf"},
         ]}
         html = render_ctx(resources, b)
-        self.assertIn("ficheiro não encontrado", html)
+        self.assertIn("file not found", html)
 
     def test_render_url_item_no_freshness_target_blank(self):
         b = {"id": "res1", "type": "resources", "items": [
             {"label": "Figma", "kind": "url", "url": "https://figma.com/x"},
         ]}
         html = render_ctx(resources, b)
-        self.assertNotIn("atualizado", html)
-        self.assertNotIn("não encontrado", html)
+        self.assertNotIn("updated", html)
+        self.assertNotIn("not found", html)
         self.assertIn('target="_blank"', html)
         self.assertIn('href="https://figma.com/x"', html)
 

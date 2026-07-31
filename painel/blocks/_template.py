@@ -4,7 +4,7 @@ Copy-me skeleton for a new block type.
 To add a block:
 1. Copy this file to blocks/<type>.py.
 2. Set TYPE to a unique, stable, snake_case name.
-3. Fill in STRINGS with every user-facing literal (PT-PT), for future i18n.
+3. Fill in STRINGS with every user-facing literal (US English), for future i18n.
 4. Implement render() — escape ALL user content with e() from base.py;
    JSON embedded in an HTML attribute must go through e(json.dumps(...));
    colors must come from CSS custom properties, never hardcoded.
@@ -26,7 +26,7 @@ from __future__ import annotations
 from .base import e, md_inline  # noqa: F401  (example imports; adjust as needed)
 
 STRINGS = {
-    # "example_label": "Rótulo de exemplo",
+    # "example_label": "Example label",
 }
 
 
@@ -45,7 +45,7 @@ def apply(block: dict, event: dict) -> bool:
 
 
 def needs_user(block: dict) -> list:
-    """Labels (PT) for everything in this block currently waiting on the
+    """Labels (English) for everything in this block currently waiting on the
     human. Empty list = nothing pending. Drives the attention bar."""
     return []
 

@@ -16,7 +16,7 @@ def render(block: dict, ctx: dict) -> str:
             f'<div class="answer">{e(f.get("label"))}: {e(f.get("value"))}</div>'
             for f in block.get("fields", [])
         )
-        return f'<div class="card answered"><h3>Formulário</h3><p>{prompt}</p>{rows}</div>'
+        return f'<div class="card answered"><h3>Form</h3><p>{prompt}</p>{rows}</div>'
     fields = []
     for f in block.get("fields", []):
         fid = e(f.get("id", ""))
@@ -34,8 +34,8 @@ def render(block: dict, ctx: dict) -> str:
         fields.append(f'<label class="field"><span>{label}</span>{inp}</label>')
     ids = e(json.dumps([f.get("id") for f in block.get("fields", [])]))
     return (
-        f'<div class="card"><h3>Formulário</h3><p>{prompt}</p>{"".join(fields)}'
-        f'<button onclick="submitForm(\'{bid}\',{ids})">Enviar</button></div>'
+        f'<div class="card"><h3>Form</h3><p>{prompt}</p>{"".join(fields)}'
+        f'<button onclick="submitForm(\'{bid}\',{ids})">Send</button></div>'
     )
 
 
@@ -53,7 +53,7 @@ def apply(block: dict, event: dict) -> bool:
 def needs_user(block: dict) -> list:
     bid = block.get("id", "")
     if not block.get("submitted"):
-        return [(bid, "Formulário por preencher")]
+        return [(bid, "Form to fill in")]
     return []
 
 

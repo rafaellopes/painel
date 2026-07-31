@@ -55,12 +55,12 @@ def status_chip_text(pending: int, status: str, has_resolved: bool) -> str:
     """Header/card chip text (§10.2). 'waiting' with nothing pending renders
     the same as 'idle', per spec."""
     if pending > 0:
-        return f"🔴 À espera de ti ({pending})"
+        return f"🔴 Waiting on you ({pending})"
     if status == "working":
-        return "🟡 O agente está a trabalhar…"
+        return "🟡 The agent is working…"
     if has_resolved:
-        return "✅ Tudo feito"
-    return "⚪ Agente offline"
+        return "✅ All done"
+    return "⚪ Agent offline"
 
 
 # --------------------------------------------------------------------------- #
@@ -69,22 +69,22 @@ def status_chip_text(pending: int, status: str, has_resolved: bool) -> str:
 # reuse it. No equivalent existed anywhere in the codebase before M11.        #
 # --------------------------------------------------------------------------- #
 def relative_time(ts: float, now: float | None = None) -> str:
-    """"atualizado há Xm/h/d" for a unix timestamp, falling back to an
+    """"updated Xm/h/d ago" for a unix timestamp, falling back to an
     absolute date beyond ~7 days (§15.2). `now` is injectable for tests."""
     now = time.time() if now is None else now
     delta = max(0, now - ts)
     minutes = int(delta // 60)
     if minutes < 1:
-        return "atualizado agora mesmo"
+        return "updated just now"
     if minutes < 60:
-        return f"atualizado há {minutes} min"
+        return f"updated {minutes} min ago"
     hours = minutes // 60
     if hours < 24:
-        return f"atualizado há {hours}h"
+        return f"updated {hours}h ago"
     days = hours // 24
     if days < 7:
-        return f"atualizado há {days}d"
-    return f"atualizado em {time.strftime('%Y-%m-%d', time.localtime(ts))}"
+        return f"updated {days}d ago"
+    return f"updated on {time.strftime('%Y-%m-%d', time.localtime(ts))}"
 
 
 # --------------------------------------------------------------------------- #
@@ -107,11 +107,11 @@ def item_change_request_html(block_id, item_id) -> str:
     bid, iid = e(block_id), e(item_id)
     key = f"{bid}-{iid}"
     return (
-        f'<button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" '
+        f'<button class="ico item-cr-btn" title="Ask / get help on this step" '
         f'onclick="crToggleItem(\'{bid}\',\'{iid}\')">&#10067;</button>'
         f'<div id="cr-box-{key}" class="cr-box" style="display:none">'
         f'<textarea id="cr-ta-{key}" data-orig="" '
-        f'placeholder="O que precisas de saber ou mudar neste passo?"></textarea>'
-        f'<button onclick="crSendItem(\'{bid}\',\'{iid}\')">Enviar</button>'
+        f'placeholder="What do you need to know or change in this step?"></textarea>'
+        f'<button onclick="crSendItem(\'{bid}\',\'{iid}\')">Send</button>'
         f'</div>'
     )

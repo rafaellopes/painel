@@ -514,7 +514,7 @@ class RoutingTest(_RunningServiceMixin, unittest.TestCase):
         port = self._start_service()
         status, body = self._get(port, "/")
         self.assertEqual(status, 200)
-        self.assertIn("Nenhum projeto registado", body)
+        self.assertIn("No project registered", body)
         self.assertIn("</html>", body)
 
     def test_missing_project_renders_visibly_missing_in_the_directory(self):
@@ -525,7 +525,7 @@ class RoutingTest(_RunningServiceMixin, unittest.TestCase):
         status, body = self._get(port, "/")
         self.assertEqual(status, 200)
         self.assertIn("Desaparecido", body)  # listed, not silently dropped
-        self.assertIn("board não encontrado", body)  # and visibly so
+        self.assertIn("board not found", body)  # and visibly so
         self.assertNotIn('href="/desaparecido"', body)  # nothing to open
 
     def test_slug_renders_that_boards_home(self):
@@ -690,8 +690,8 @@ class DirectoryRenderTest(_FakeHomeMixin, unittest.TestCase):
             "sem", project="Sem Pendentes", title="Sem Pendentes",
             blocks=[{"id": "q1", "type": "question", "prompt": "?", "answer": "sim"}]))
         html = dir_mod.render_directory(registry.entries())
-        self.assertIn("À espera de ti", html)
-        self.assertIn("Agente offline", html)
+        self.assertIn("Waiting on you", html)
+        self.assertIn("Agent offline", html)
 
     def test_agent_status_chip_shown_per_project(self):
         path = self._project("proj", project="meu-projeto", title="O Meu Board")
@@ -702,7 +702,7 @@ class DirectoryRenderTest(_FakeHomeMixin, unittest.TestCase):
         html = dir_mod.render_directory(registry.entries())
         self.assertIn("O Meu Board", html)
         self.assertIn("meu-projeto", html)
-        self.assertIn("a trabalhar", html)
+        self.assertIn("working", html)
 
     def test_directory_adds_no_block_type_to_the_public_catalog(self):
         from painel.blocks import REGISTRY
@@ -780,7 +780,7 @@ class ForeignServiceOnServicePortTest(_FakeHomeMixin, unittest.TestCase):
             self.assertIsNone(result)                 # failed...
             self.assertEqual(spawn_calls, [])         # ...without binding anything
             err = captured.getvalue()
-            self.assertIn("já está ocupada", err)
+            self.assertIn("already taken", err)
             self.assertIn("--port", err)              # and told the human what to do
         finally:
             cli._spawn_service = orig
@@ -814,8 +814,8 @@ class ExposureSafetyTest(unittest.TestCase):
             with contextlib.redirect_stderr(captured):
                 self.assertFalse(cli._check_exposure(host, ack=False))
             err = captured.getvalue()
-            self.assertIn("recusei arrancar", err)
-            self.assertIn("credenciais", err)  # says WHY, not just "no"
+            self.assertIn("refused to start", err)
+            self.assertIn("credentials", err)  # says WHY, not just "no"
             self.assertIn(cli.EXPOSE_ACK_FLAG, err)  # says how, if you mean it
 
     def test_non_loopback_with_the_ack_flag_is_allowed(self):
@@ -973,8 +973,8 @@ class CliCommandsTest(_FakeHomeMixin, unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             cli.cmd_status()
-        self.assertIn("parado", out.getvalue())
-        self.assertIn("1 projeto registado", out.getvalue())
+        self.assertIn("stopped", out.getvalue())
+        self.assertIn("1 project registered", out.getvalue())
 
         registry.write_service(os.getpid(), 8765)
         orig = cli._service_running
@@ -984,7 +984,7 @@ class CliCommandsTest(_FakeHomeMixin, unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 cli.cmd_status()
             self.assertIn("http://localhost:8765/", out.getvalue())
-            self.assertIn("1 projeto registado", out.getvalue())
+            self.assertIn("1 project registered", out.getvalue())
         finally:
             cli._service_running = orig
 
@@ -1021,7 +1021,7 @@ class CliCommandsTest(_FakeHomeMixin, unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 self.assertEqual(cli.cmd_restart_all(), 0)
             self.assertEqual(spawned, [(8765, "127.0.0.1")])
-            self.assertIn("reiniciado", out.getvalue())
+            self.assertIn("restarted", out.getvalue())
         finally:
             cli._spawn_service, cli._pid_alive = orig_spawn, orig_alive
             cli._wait_until_listening, cli._wait_until_listening_free = orig_wait, orig_free
@@ -1032,7 +1032,7 @@ class CliCommandsTest(_FakeHomeMixin, unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             self.assertEqual(cli.cmd_restart_all(), 0)
-        self.assertIn("nenhum pAInel a correr", out.getvalue())
+        self.assertIn("no pAInel running", out.getvalue())
 
 
 # --------------------------------------------------------------------------- #

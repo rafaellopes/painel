@@ -205,8 +205,8 @@ def _entry(slug: str, entry: dict) -> dict:
         "title": entry.get("title") or slug,
         # §17.3: a registry entry whose path is gone renders as a *visibly*
         # missing project, never silently dropped -- a moved project should be
-        # diagnosable, not invisible (same spirit as resources' "⚠ não
-        # encontrado", §15.2).
+        # diagnosable, not invisible (same spirit as resources' "⚠ file not
+        # found", §15.2).
         "missing": not os.path.exists(path),
     }
 

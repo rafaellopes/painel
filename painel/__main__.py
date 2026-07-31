@@ -43,11 +43,11 @@ STARTER = {
     "title": "pAInel",
     "meta": {"project": os.path.basename(os.getcwd())},
     "blocks": [
-        {"id": "h1", "type": "heading", "text": "Objetivo"},
-        {"id": "m1", "type": "markdown", "text": "Descreve aqui o objetivo da sessão."},
-        {"id": "h2", "type": "heading", "text": "Progresso"},
-        {"id": "tk", "type": "tasks", "title": "Tarefas do agente", "items": [
-            {"text": "Primeira tarefa", "status": "wip"},
+        {"id": "h1", "type": "heading", "text": "Goal"},
+        {"id": "m1", "type": "markdown", "text": "Describe the session goal here."},
+        {"id": "h2", "type": "heading", "text": "Progress"},
+        {"id": "tk", "type": "tasks", "title": "Agent tasks", "items": [
+            {"text": "First task", "status": "wip"},
         ]},
     ],
 }
@@ -72,71 +72,71 @@ def _demo_board() -> dict:
     _repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     _readme_path = os.path.join(_repo_root, "README.md")
     return {
-        "title": "pAInel — demonstração",
+        "title": "pAInel — demo",
         "meta": {"project": "demo", "agent_status": "working"},
         "blocks": [
-            {"id": "h1", "type": "heading", "text": "O que é"},
+            {"id": "h1", "type": "heading", "text": "What it is"},
             {"id": "m1", "type": "markdown",
-             "text": "O **pAInel** é a segunda interface do teu agente. "
-                     "Cada bloco em baixo é um `tipo` diferente de interação."},
+             "text": "**pAInel** is your agent's second interface. "
+                     "Each block below is a different `type` of interaction."},
             {"id": "note", "type": "note", "tone": "info",
-             "text": "Marca uma checkbox ou responde a uma pergunta — o agente é notificado na hora."},
-            {"id": "h2", "type": "heading", "text": "Atividades manuais (tuas)"},
-            {"id": "cl", "type": "checklist", "title": "Faz isto e marca", "items": [
-                {"id": "c1", "text": "Fazer login no portal X", "checked": False},
-                {"id": "c2", "text": "Descarregar o **PDF** do relatório", "checked": False},
-                {"id": "c3", "text": "Colocar o ficheiro em `~/Downloads`", "checked": False},
+             "text": "Check a box or answer a question — the agent is notified instantly."},
+            {"id": "h2", "type": "heading", "text": "Manual steps (yours)"},
+            {"id": "cl", "type": "checklist", "title": "Do this and check it off", "items": [
+                {"id": "c1", "text": "Log in to portal X", "checked": False},
+                {"id": "c2", "text": "Download the report **PDF**", "checked": False},
+                {"id": "c3", "text": "Put the file in `~/Downloads`", "checked": False},
             ]},
-            {"id": "h2b", "type": "heading", "text": "Um plano que se controla, não só se lê"},
-            {"id": "pl", "type": "plan", "title": "Plano", "items": [
-                {"id": "p1", "text": "Ler configuração", "status": "done"},
-                {"id": "p2", "text": "Processar ficheiro", "status": "wip"},
-                {"id": "p3", "text": "Gerar relatório", "status": "pending"},
-                {"id": "p4", "text": "Enviar por email", "status": "pending"},
+            {"id": "h2b", "type": "heading", "text": "A plan you steer, not just read"},
+            {"id": "pl", "type": "plan", "title": "Plan", "items": [
+                {"id": "p1", "text": "Read configuration", "status": "done"},
+                {"id": "p2", "text": "Process file", "status": "wip"},
+                {"id": "p3", "text": "Generate report", "status": "pending"},
+                {"id": "p4", "text": "Send by email", "status": "pending"},
             ]},
-            {"id": "h3", "type": "heading", "text": "Progresso do agente"},
+            {"id": "h3", "type": "heading", "text": "Agent progress"},
             {"id": "tk", "type": "tasks", "title": "Pipeline", "items": [
-                {"text": "Ler configuração", "status": "done"},
-                {"text": "Processar ficheiro", "status": "wip"},
-                {"text": "Gerar relatório", "status": "pending"},
-                {"text": "Enviar por email", "status": "blocked"},
+                {"text": "Read configuration", "status": "done"},
+                {"text": "Process file", "status": "wip"},
+                {"text": "Generate report", "status": "pending"},
+                {"text": "Send by email", "status": "blocked"},
             ]},
-            {"id": "h4", "type": "heading", "text": "Perguntas & decisões"},
-            {"id": "q1", "type": "question", "prompt": "Qual o email de destino do relatório?", "answer": None},
-            {"id": "ch", "type": "choice", "prompt": "Formato do relatório?",
-             "options": ["PDF", "Excel", "Ambos"], "selected": None},
+            {"id": "h4", "type": "heading", "text": "Questions & decisions"},
+            {"id": "q1", "type": "question", "prompt": "Which email should the report go to?", "answer": None},
+            {"id": "ch", "type": "choice", "prompt": "Report format?",
+             "options": ["PDF", "Excel", "Both"], "selected": None},
             {"id": "ap", "type": "approval",
-             "prompt": "Posso enviar o email agora?", "decision": None},
-            {"id": "fm", "type": "form", "prompt": "Dados do cliente:", "fields": [
-                {"id": "nome", "label": "Nome", "kind": "text", "value": ""},
-                {"id": "plano", "label": "Plano", "kind": "select",
-                 "options": ["Básico", "Pro"], "value": ""},
+             "prompt": "Can I send the email now?", "decision": None},
+            {"id": "fm", "type": "form", "prompt": "Client details:", "fields": [
+                {"id": "nome", "label": "Name", "kind": "text", "value": ""},
+                {"id": "plano", "label": "Plan", "kind": "select",
+                 "options": ["Basic", "Pro"], "value": ""},
             ], "submitted": False},
-            {"id": "lg", "type": "log", "title": "Registo", "entries": [
-                {"ts": "10:00", "text": "Sessão iniciada"},
+            {"id": "lg", "type": "log", "title": "Log", "entries": [
+                {"ts": "10:00", "text": "Session started"},
             ]},
-            {"id": "h5", "type": "heading", "text": "Conversa livre"},
-            {"id": "chat", "type": "chat", "title": "Conversa", "messages": [
-                {"from": "user", "text": "Porque escolheste esta abordagem?"},
-                {"from": "agent", "text": "Porque **X** evita Y — ver decisão em Registo."},
+            {"id": "h5", "type": "heading", "text": "Free conversation"},
+            {"id": "chat", "type": "chat", "title": "Conversation", "messages": [
+                {"from": "user", "text": "Why did you choose this approach?"},
+                {"from": "agent", "text": "Because **X** avoids Y — see the decision in Log."},
             ]},
-            {"id": "h6", "type": "heading", "text": "Documentos e mockups (sempre atualizados)"},
-            {"id": "res1", "type": "resources", "title": "Documentos e mockups", "items": [
-                {"label": "README do projeto", "kind": "file", "path": _readme_path},
-                {"label": "Pasta de entregáveis (exemplo)", "kind": "folder", "path": _repo_root},
-                {"label": "Protótipo Figma (exemplo)", "kind": "url", "url": "https://figma.com/file/example"},
+            {"id": "h6", "type": "heading", "text": "Documents & mockups (always up to date)"},
+            {"id": "res1", "type": "resources", "title": "Documents & mockups", "items": [
+                {"label": "Project README", "kind": "file", "path": _readme_path},
+                {"label": "Deliverables folder (example)", "kind": "folder", "path": _repo_root},
+                {"label": "Figma prototype (example)", "kind": "url", "url": "https://figma.com/file/example"},
             ]},
-            {"id": "h7", "type": "heading", "text": "Dá-me ficheiros (arrasta e larga)"},
+            {"id": "h7", "type": "heading", "text": "Hand me files (drag and drop)"},
             # files[] stays empty so nothing machine-specific (a real uploaded
             # path/size) ever leaks into the committed golden (§ golden note).
             {"id": "up1", "type": "upload",
-             "prompt": "Arrasta aqui os screenshots (.png, .jpg)",
+             "prompt": "Drag your screenshots here (.png, .jpg)",
              "accept": ".png,.jpg,.jpeg,.gif,.webp",
              "dest_dir": "docs/screenshots", "multiple": True, "directory": False,
              "files": []},
         ],
         "change_requests": [
-            {"id": "cr1", "block": "pl", "text": "adiciona uma fase de testes com utilizadores",
+            {"id": "cr1", "block": "pl", "text": "add a user-testing phase",
              "status": "open", "ts": "10:05"},
         ],
     }
@@ -240,9 +240,9 @@ def _ensure_service_running(port: int = SERVICE_PORT) -> int | None:
             registry.write_service(-1, port)
             return port
         print(
-            f"erro: a porta {port} já está ocupada por outro serviço, "
-            f"por isso o pAInel não arrancou aí. Escolhe outra porta com "
-            f"'painel open --port <N>' (ou liberta a {port}).",
+            f"error: port {port} is already taken by another service, "
+            f"so pAInel did not start there. Choose another port with "
+            f"'painel open --port <N>' (or free up {port}).",
             file=sys.stderr,
         )
         return None
@@ -281,12 +281,12 @@ def _check_exposure(host: str, ack: bool) -> bool:
     if host in LOOPBACK_HOSTS or ack:
         return True
     print(
-        f"erro: recusei arrancar em {host} (fora de 127.0.0.1).\n"
-        f"Os boards contêm credenciais em texto simples com frequência "
-        f"(senhas de teste, tokens, dados de clientes) e o pAInel NÃO tem "
-        f"autenticação nenhuma -- de propósito (docs/SPEC.md §17.6).\n"
-        f"Expor isto na rede é dar essas credenciais a quem lá chegar.\n"
-        f"Se é mesmo isso que queres, repete com {EXPOSE_ACK_FLAG}.",
+        f"error: refused to start on {host} (outside 127.0.0.1).\n"
+        f"Boards frequently contain plaintext credentials "
+        f"(test passwords, tokens, client data) and pAInel has NO "
+        f"authentication at all -- by design (docs/SPEC.md §17.6).\n"
+        f"Exposing this on the network hands those credentials to whoever reaches it.\n"
+        f"If that's really what you want, repeat with {EXPOSE_ACK_FLAG}.",
         file=sys.stderr,
     )
     return False
@@ -297,7 +297,7 @@ def cmd_open(target: str, port: int | None) -> int:
     if not os.path.exists(board):
         os.makedirs(os.path.dirname(os.path.abspath(board)), exist_ok=True)
         save_board(board, _starter(board))
-        print(f"board criado: {board}")
+        print(f"board created: {board}")
     _default_agent_status_if_absent(board)
     slug = registry.register(board)
 
@@ -306,7 +306,7 @@ def cmd_open(target: str, port: int | None) -> int:
         return 1
     url = f"http://localhost:{chosen}/{slug}"
     webbrowser.open(url)
-    print(f"pAInel aberto: {url}  (todos os projetos: http://localhost:{chosen}/)")
+    print(f"pAInel opened: {url}  (all projects: http://localhost:{chosen}/)")
     return 0
 
 
@@ -314,11 +314,11 @@ def cmd_add(target: str) -> int:
     """Register without opening -- for bulk-adding existing projects (§17.5)."""
     board = _resolve_board_arg(target)
     if not os.path.exists(board):
-        print(f"erro: não existe nenhum board em {board}", file=sys.stderr)
+        print(f"error: no board at {board}", file=sys.stderr)
         return 1
     slug = registry.register(board)
     port = _service_port(None)
-    print(f"registado: {slug}  ->  {board}\n   http://localhost:{port}/{slug}")
+    print(f"registered: {slug}  ->  {board}\n   http://localhost:{port}/{slug}")
     return 0
 
 
@@ -330,24 +330,25 @@ def cmd_lint(target: str) -> int:
     still free to fix: before the human ever sees the board."""
     board_path = _resolve_board_arg(target)
     if not os.path.exists(board_path):
-        print(f"erro: não existe nenhum board em {board_path}", file=sys.stderr)
+        print(f"error: no board at {board_path}", file=sys.stderr)
         return 1
     try:
         board = load_board(board_path)
     except (OSError, json.JSONDecodeError) as exc:
-        print(f"erro: não consegui ler {board_path}: {exc}", file=sys.stderr)
+        print(f"error: could not read {board_path}: {exc}", file=sys.stderr)
         return 1
     findings = lint.lint_board(board)
     if not findings:
-        print(f"lint: sem problemas em {board_path}")
+        print(f"lint: no issues in {board_path}")
         return 0
     n = len(findings)
-    print(f"lint: {n} item{'s' if n > 1 else ''} de checklist que parece{'m' if n > 1 else ''} "
-          f"pedir uma resposta em vez de um visto ({board_path}):", file=sys.stderr)
+    print(f"lint: {n} checklist item{'s' if n > 1 else ''} "
+          f"{'look' if n > 1 else 'looks'} like {'they ask' if n > 1 else 'it asks'} "
+          f"for an answer instead of a tick ({board_path}):", file=sys.stderr)
     for f in findings:
         print("  " + lint.format_finding(f), file=sys.stderr)
-    print("\nMarcar um destes não entrega nada ao agente. Converte-os em blocos "
-          "'question' (uma resposta) ou 'form' (vários campos).", file=sys.stderr)
+    print("\nChecking one of these off delivers nothing to the agent. Convert them into "
+          "'question' blocks (one answer) or 'form' (several fields).", file=sys.stderr)
     return 1
 
 
@@ -355,16 +356,16 @@ def cmd_remove(slug: str) -> int:
     """Unregister. NEVER deletes the board file (§17.5) -- the board belongs to
     the project, not to us."""
     if registry.unregister(slug):
-        print(f"removido do registo: {slug}  (o board em si não foi apagado)")
+        print(f"unregistered: {slug}  (the board itself was not deleted)")
         return 0
-    print(f"não está registado: {slug}", file=sys.stderr)
+    print(f"not registered: {slug}", file=sys.stderr)
     return 1
 
 
 def cmd_stop() -> int:
     info = registry.read_service()
     if not info:
-        print("o serviço do pAInel não está a correr.")
+        print("the pAInel service is not running.")
         return 0
     pid = info.get("pid")
     if pid and pid > 0 and _pid_alive(pid):
@@ -373,7 +374,7 @@ def cmd_stop() -> int:
         except OSError:
             pass
     registry.clear_service()
-    print("parado.")
+    print("stopped.")
     return 0
 
 
@@ -381,12 +382,11 @@ def cmd_status() -> int:
     info = registry.read_service()
     n = len(registry.load_projects())
     if info and _service_running(info.get("port", -1)):
-        print(f"a correr em http://localhost:{info['port']}/  "
-              f"(pid {info['pid']}, {n} projeto{'s' if n != 1 else ''} registado"
-              f"{'s' if n != 1 else ''})")
+        print(f"running at http://localhost:{info['port']}/  "
+              f"(pid {info['pid']}, {n} project{'s' if n != 1 else ''} registered)")
     else:
-        print(f"parado.  ({n} projeto{'s' if n != 1 else ''} registado"
-              f"{'s' if n != 1 else ''} — 'painel open' para arrancar)")
+        print(f"stopped.  ({n} project{'s' if n != 1 else ''} registered"
+              f" — 'painel open' to start)")
     return 0
 
 
@@ -397,7 +397,7 @@ def cmd_restart_all() -> int:
     (§17.5). Same port, so every bookmark survives the restart."""
     info = registry.read_service()
     if not info:
-        print("nenhum pAInel a correr.")
+        print("no pAInel running.")
         return 0
     port, pid = info.get("port", SERVICE_PORT), info.get("pid", -1)
     host = info.get("host", "127.0.0.1")
@@ -414,7 +414,7 @@ def cmd_restart_all() -> int:
     new_pid = _spawn_service(port, host)
     _wait_until_listening(port)
     n = len(registry.load_projects())
-    print(f"reiniciado: http://localhost:{port}/  (pid {new_pid}, {n} projetos)")
+    print(f"restarted: http://localhost:{port}/  (pid {new_pid}, {n} projects)")
     return 0
 
 
@@ -448,9 +448,9 @@ def cmd_install_skill(project_dir: str) -> int:
     src = _skill_source_dir()
     if src is None:
         print(
-            "erro: não encontrei a skill canónica ao lado desta instalação -- "
-            "isto só funciona quando o painel está instalado com "
-            "'pip install -e' a partir do próprio repositório.",
+            "error: could not find the canonical skill next to this installation -- "
+            "this only works when painel is installed with "
+            "'pip install -e' from its own repository.",
             file=sys.stderr,
         )
         return 1
@@ -458,20 +458,20 @@ def cmd_install_skill(project_dir: str) -> int:
     dest = os.path.join(dest_parent, "painel")
     if os.path.islink(dest):
         if os.path.realpath(dest) == os.path.realpath(src):
-            print(f"já ligado: {dest} -> {src}")
+            print(f"already linked: {dest} -> {src}")
             return 0
         os.remove(dest)  # stale link pointing somewhere else -- replace it
     elif os.path.exists(dest):
         print(
-            f"aviso: {dest} já existe e não é uma ligação simbólica -- "
-            f"não vou substituir uma cópia manual. Remove-o à mão se "
-            f"quiseres o link (e a partir daí nunca mais fica desatualizado).",
+            f"warning: {dest} already exists and is not a symlink -- "
+            f"I will not replace a manual copy. Remove it by hand if you "
+            f"want the link (and from then on it never goes stale again).",
             file=sys.stderr,
         )
         return 1
     os.makedirs(dest_parent, exist_ok=True)
     os.symlink(src, dest)
-    print(f"ligado: {dest} -> {src}")
+    print(f"linked: {dest} -> {src}")
     return 0
 
 
@@ -551,10 +551,10 @@ def main(argv=None) -> int:
         return 0
     if args.cmd == "init":
         if os.path.exists(args.board):
-            print(f"já existe: {args.board}", file=sys.stderr)
+            print(f"already exists: {args.board}", file=sys.stderr)
             return 1
         save_board(args.board, STARTER)
-        print(f"criado: {args.board}")
+        print(f"created: {args.board}")
         return 0
     if args.cmd == "demo":
         path = ".painel-demo.json"

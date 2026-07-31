@@ -56,7 +56,7 @@ class BreadcrumbTest(_TmpProjects):
         html = srv.render(board, active_page="Financeiro", base_path="/spit",
                           slug="spit", entries=self._entries())
         crumb = html.split('<div class="breadcrumb">')[1].split("</div>")[0]
-        self.assertIn("Todos os projetos", crumb)
+        self.assertIn("All projects", crumb)
         self.assertIn('href="/"', crumb)          # -> the directory
         self.assertIn('href="/spit"', crumb)      # -> the board Home
         self.assertIn("Financeiro", crumb)        # current page...
@@ -68,7 +68,7 @@ class BreadcrumbTest(_TmpProjects):
         html = srv.render(board, active_page=None, base_path="/spit", slug="spit",
                           entries=self._entries())
         crumb = html.split('<div class="breadcrumb">')[1].split("</div>")[0]
-        self.assertIn("Todos os projetos", crumb)
+        self.assertIn("All projects", crumb)
         self.assertIn("Spit", crumb)
         # No page segment on Home: the project is the last, plain-text crumb,
         # and it is NOT itself a link (you're on it).
@@ -76,12 +76,12 @@ class BreadcrumbTest(_TmpProjects):
 
     def test_single_board_serve_has_no_directory_link(self):
         """§18.1: single-board `painel serve` has no directory and no `/` route
-        to link to -- the `Todos os projetos` segment is omitted and nothing in
+        to link to -- the `All projects` segment is omitted and nothing in
         the breadcrumb points at `/`."""
         board = _board("Sozinho", "sozinho", [{"id": "h1", "type": "heading", "text": "Home"}])
         html = srv.render(board)  # bare == single-board mode (entries is None)
         crumb = html.split('<div class="breadcrumb">')[1].split("</div>")[0]
-        self.assertNotIn("Todos os projetos", crumb)
+        self.assertNotIn("All projects", crumb)
         self.assertNotIn('href="/"', crumb)
         self.assertIn("Sozinho", crumb)  # still shows where you are
 
@@ -129,7 +129,7 @@ class SwitcherTest(_TmpProjects):
         ]
         html = srv.render(_board("Aqui", "here", [_ANSWERED_Q]),
                           base_path="/here", slug="here", entries=entries)
-        self.assertIn("1 à tua espera noutros projetos", html)
+        self.assertIn("1 waiting on you in other projects", html)
 
     def test_single_board_switcher_shows_only_current_no_list_no_crash(self):
         """§18.2: single-board `serve` has no registry -- the switcher degrades
@@ -156,7 +156,7 @@ class TwoLevelsDistinctTest(_TmpProjects):
                           base_path="/here", slug="here", entries=entries)
         self.assertIn('class="attention"', html)               # this board
         switcher = html.split('<div class="switcher">')[1].split("</aside>")[0]
-        self.assertIn("1 à tua espera noutros projetos", switcher)  # other board
+        self.assertIn("1 waiting on you in other projects", switcher)  # other board
         # The two are different regions -- the switcher is not inside the bar.
         attention = html.split('class="attention"')[1].split("</div>")[0]
         self.assertNotIn("switcher", attention)
@@ -196,7 +196,7 @@ class DirectoryUnaffectedTest(_TmpProjects):
         self.assertNotIn('class="breadcrumb"', body)
         self.assertNotIn('class="app-shell"', body)
         self.assertNotIn('class="switcher"', body)
-        self.assertNotIn("Todos os projetos", body)
+        self.assertNotIn("All projects", body)
 
 
 class PageListRegionTest(_TmpProjects):

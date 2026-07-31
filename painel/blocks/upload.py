@@ -24,11 +24,11 @@ from .base import e, md_inline
 TYPE = "upload"
 
 STRINGS = {
-    "prompt_default": "Arrasta ficheiros para aqui",
-    "drop_hint": "Arrasta ficheiros para aqui ou clica para escolher",
-    "drop_hint_dir": "Arrasta uma pasta para aqui ou clica para escolher",
-    "uploaded": "Ficheiros enviados",
-    "pending_label": "Ficheiros por enviar",
+    "prompt_default": "Drag files here",
+    "drop_hint": "Drag files here or click to choose",
+    "drop_hint_dir": "Drag a folder here or click to choose",
+    "uploaded": "Files uploaded",
+    "pending_label": "Files to upload",
 }
 
 

@@ -51,10 +51,10 @@ class BroadcastChannelSetupTest(unittest.TestCase):
         self.assertIn("type: 'already-open'", html)
         self.assertIn("type === 'already-open'", html)
 
-    def test_duplicate_notice_element_and_pt_pt_copy_present(self):
+    def test_duplicate_notice_element_and_copy_present(self):
         html = srv.render(_simple_board())
         self.assertIn('id="dup-notice"', html)
-        self.assertIn("já tens este pAInel aberto — a fechar este separador", html)
+        self.assertIn("you already have this pAInel open — closing this tab", html)
 
     def test_window_close_called_on_duplicate(self):
         html = srv.render(_simple_board())

@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="pt"><head>
+<html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>🔴 6 à tua espera — pAInel — demonstração</title>
+<title>🔴 6 waiting on you — pAInel — demo</title>
 <link rel="icon" id="favicon" href="">
 <style>
 :root {
@@ -101,7 +101,7 @@ button.no { background:var(--blocked); color:#2a0a0a; margin-left:.5rem; }
 .needs-user { position:relative; }
 .needs-user > .card { border-left:4px solid var(--wip); }
 .needs-user::before {
-  content:"⏳ à tua espera"; position:absolute; top:-.65rem; right:.9rem;
+  content:"⏳ waiting on you"; position:absolute; top:-.65rem; right:.9rem;
   background:var(--wip); color:#1a1a1a; font-size:.68rem; font-weight:700;
   letter-spacing:.02em; padding:.15rem .55rem; border-radius:999px; z-index:1;
 }
@@ -145,7 +145,7 @@ footer { color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.5
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }
 /* --- Change requests (M8, docs/SPEC.md §12) -- generic per-block ✎ button
    + inline box injected by render() itself (not by any blocks/*.py module),
-   plus the global affordance and the "Pedidos em aberto" card. --- */
+   plus the global affordance and the "Open requests" card. --- */
 .block-actions { display:flex; justify-content:flex-end; gap:.15rem; margin-bottom:.3rem; }
 .cr-box { margin-bottom:.6rem; }
 .cr-card ul.log a { color:var(--accent); text-decoration:underline; font-size:.82rem; }
@@ -241,111 +241,111 @@ body.has-nav { max-width:1040px; }
   .app-shell { width:100%; position:static; margin-bottom:1rem; }
 }
 </style></head><body class="has-nav">
-<div id="dup-notice">👉 já tens este pAInel aberto — a fechar este separador</div>
-<div class="attention"><span class="attention-count">6</span> à tua espera: <a href="/#blk-cl">3 passos manuais por marcar</a> · <a href="/#blk-q1">Pergunta por responder</a> · <a href="/#blk-ch">Escolha pendente</a> · <a href="/#blk-ap">Aprovação pendente</a> · <a href="/#blk-fm">Formulário por preencher</a> · <a href="/#blk-up1">Arrasta aqui os screenshots (.png, .jpg)</a></div>
-<div class="breadcrumb"><span class="crumb-current">pAInel — demonstração</span></div>
+<div id="dup-notice">👉 you already have this pAInel open — closing this tab</div>
+<div class="attention"><span class="attention-count">6</span> waiting on you: <a href="/#blk-cl">3 manual steps to check off</a> · <a href="/#blk-q1">Question to answer</a> · <a href="/#blk-ch">Choice pending</a> · <a href="/#blk-ap">Approval pending</a> · <a href="/#blk-fm">Form to fill in</a> · <a href="/#blk-up1">Drag your screenshots here (.png, .jpg)</a></div>
+<div class="breadcrumb"><span class="crumb-current">pAInel — demo</span></div>
 <header id="page-header">
-  <h1>🔴 6 à tua espera — pAInel — demonstração</h1>
-  <div class="metaline">Projeto: demo</div>
-  <div id="status-chip" class="status-chip">🔴 À espera de ti (6)</div>
+  <h1>🔴 6 waiting on you — pAInel — demo</h1>
+  <div class="metaline">Project: demo</div>
+  <div id="status-chip" class="status-chip">🔴 Waiting on you (6)</div>
 </header>
-<div class="page-shell"><aside class="app-shell"><div class="switcher"><div class="switcher-current">📋 pAInel — demonstração</div></div></aside><div class="page-main">
-<div id="blk-h1"><h2 class="section">O que é</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h1')">&#9998;</button></div><div id="cr-box-h1" class="cr-box" style="display:none"><textarea id="cr-ta-h1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h1')">Enviar pedido</button></div></div><div id="blk-m1"><div class="card md">O <strong>pAInel</strong> é a segunda interface do teu agente. Cada bloco em baixo é um <code>tipo</code> diferente de interação.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('m1')">&#9998;</button></div><div id="cr-box-m1" class="cr-box" style="display:none"><textarea id="cr-ta-m1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('m1')">Enviar pedido</button></div></div><div id="blk-note"><div class="card note note-info">Marca uma checkbox ou responde a uma pergunta — o agente é notificado na hora.</div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('note')">&#9998;</button></div><div id="cr-box-note" class="cr-box" style="display:none"><textarea id="cr-ta-note" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('note')">Enviar pedido</button></div></div><div id="blk-h2"><h2 class="section">Atividades manuais (tuas)</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2')">&#9998;</button></div><div id="cr-box-h2" class="cr-box" style="display:none"><textarea id="cr-ta-h2" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2')">Enviar pedido</button></div></div><div id="blk-cl" class="needs-user"><div class="card"><h3>Faz isto e marca</h3><ul class="checklist"><li class=""><label><input type="checkbox"  onchange="check('cl','c1',this.checked)"><span>Fazer login no portal X</span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c1')">&#10067;</button><div id="cr-box-cl-c1" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c1" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c1')">Enviar</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c2',this.checked)"><span>Descarregar o <strong>PDF</strong> do relatório</span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c2')">&#10067;</button><div id="cr-box-cl-c2" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c2" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c2')">Enviar</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c3',this.checked)"><span>Colocar o ficheiro em <code>~/Downloads</code></span></label><button class="ico item-cr-btn" title="Perguntar / pedir ajuda sobre este passo" onclick="crToggleItem('cl','c3')">&#10067;</button><div id="cr-box-cl-c3" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c3" data-orig="" placeholder="O que precisas de saber ou mudar neste passo?"></textarea><button onclick="crSendItem('cl','c3')">Enviar</button></div></li></ul></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('cl')">&#9998;</button></div><div id="cr-box-cl" class="cr-box" style="display:none"><textarea id="cr-ta-cl" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('cl')">Enviar pedido</button></div></div><div id="blk-h2b"><h2 class="section">Um plano que se controla, não só se lê</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h2b')">&#9998;</button></div><div id="cr-box-h2b" class="cr-box" style="display:none"><textarea id="cr-ta-h2b" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h2b')">Enviar pedido</button></div></div><div id="blk-pl"><div class="card"><h3>Plano</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="plan-items"><li class="plan-item">
+<div class="page-shell"><aside class="app-shell"><div class="switcher"><div class="switcher-current">📋 pAInel — demo</div></div></aside><div class="page-main">
+<div id="blk-h1"><h2 class="section">What it is</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h1')">&#9998;</button></div><div id="cr-box-h1" class="cr-box" style="display:none"><textarea id="cr-ta-h1" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h1')">Send request</button></div></div><div id="blk-m1"><div class="card md"><strong>pAInel</strong> is your agent&#x27;s second interface. Each block below is a different <code>type</code> of interaction.</div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('m1')">&#9998;</button></div><div id="cr-box-m1" class="cr-box" style="display:none"><textarea id="cr-ta-m1" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('m1')">Send request</button></div></div><div id="blk-note"><div class="card note note-info">Check a box or answer a question — the agent is notified instantly.</div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('note')">&#9998;</button></div><div id="cr-box-note" class="cr-box" style="display:none"><textarea id="cr-ta-note" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('note')">Send request</button></div></div><div id="blk-h2"><h2 class="section">Manual steps (yours)</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h2')">&#9998;</button></div><div id="cr-box-h2" class="cr-box" style="display:none"><textarea id="cr-ta-h2" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h2')">Send request</button></div></div><div id="blk-cl" class="needs-user"><div class="card"><h3>Do this and check it off</h3><ul class="checklist"><li class=""><label><input type="checkbox"  onchange="check('cl','c1',this.checked)"><span>Log in to portal X</span></label><button class="ico item-cr-btn" title="Ask / get help on this step" onclick="crToggleItem('cl','c1')">&#10067;</button><div id="cr-box-cl-c1" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c1" data-orig="" placeholder="What do you need to know or change in this step?"></textarea><button onclick="crSendItem('cl','c1')">Send</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c2',this.checked)"><span>Download the report <strong>PDF</strong></span></label><button class="ico item-cr-btn" title="Ask / get help on this step" onclick="crToggleItem('cl','c2')">&#10067;</button><div id="cr-box-cl-c2" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c2" data-orig="" placeholder="What do you need to know or change in this step?"></textarea><button onclick="crSendItem('cl','c2')">Send</button></div></li><li class=""><label><input type="checkbox"  onchange="check('cl','c3',this.checked)"><span>Put the file in <code>~/Downloads</code></span></label><button class="ico item-cr-btn" title="Ask / get help on this step" onclick="crToggleItem('cl','c3')">&#10067;</button><div id="cr-box-cl-c3" class="cr-box" style="display:none"><textarea id="cr-ta-cl-c3" data-orig="" placeholder="What do you need to know or change in this step?"></textarea><button onclick="crSendItem('cl','c3')">Send</button></div></li></ul></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('cl')">&#9998;</button></div><div id="cr-box-cl" class="cr-box" style="display:none"><textarea id="cr-ta-cl" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('cl')">Send request</button></div></div><div id="blk-h2b"><h2 class="section">A plan you steer, not just read</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h2b')">&#9998;</button></div><div id="cr-box-h2b" class="cr-box" style="display:none"><textarea id="cr-ta-h2b" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h2b')">Send request</button></div></div><div id="blk-pl"><div class="card"><h3>Plan</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="plan-items"><li class="plan-item">
               <div class="plan-row">
                 <span class="dot done"></span>
-                <span class="plan-text done-text">Ler configuração</span>
+                <span class="plan-text done-text">Read configuration</span>
                 <span class="plan-actions">
-                  <button class="ico play" title="Começar agora" onclick="planPlay('pl','p1')">&#9654;</button>
-                  <button class="ico" title="Editar" onclick="planToggleEdit('pl','p1')">&#9998;</button>
-                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('pl','p1')">&#128172;</button>
-                  <button class="ico" title="Saltar" onclick="planSkip('pl','p1')">&#9197;</button>
-                  <button class="ico" title="Mover para cima" onclick="planMove('pl','p1','up')" disabled>&#9650;</button>
-                  <button class="ico" title="Mover para baixo" onclick="planMove('pl','p1','down')" >&#9660;</button>
+                  <button class="ico play" title="Start now" onclick="planPlay('pl','p1')">&#9654;</button>
+                  <button class="ico" title="Edit" onclick="planToggleEdit('pl','p1')">&#9998;</button>
+                  <button class="ico" title="Ask / discuss this step" onclick="planToggleThread('pl','p1')">&#128172;</button>
+                  <button class="ico" title="Skip" onclick="planSkip('pl','p1')">&#9197;</button>
+                  <button class="ico" title="Move up" onclick="planMove('pl','p1','up')" disabled>&#9650;</button>
+                  <button class="ico" title="Move down" onclick="planMove('pl','p1','down')" >&#9660;</button>
                 </span>
               </div>
               <div id="plan-edit-pl-p1" class="plan-edit" style="display:none">
-                <textarea id="plan-ta-pl-p1" data-orig="Ler configuração">Ler configuração</textarea>
-                <button onclick="planSaveEdit('pl','p1')">Guardar</button>
+                <textarea id="plan-ta-pl-p1" data-orig="Read configuration">Read configuration</textarea>
+                <button onclick="planSaveEdit('pl','p1')">Save</button>
               </div>
               <div id="plan-thread-pl-p1" class="plan-thread" style="display:none">
                 
-                <textarea id="plan-comment-pl-p1" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
-                <button onclick="planSendComment('pl','p1')">Enviar</button>
+                <textarea id="plan-comment-pl-p1" data-orig="" placeholder="Question or comment about this step…"></textarea>
+                <button onclick="planSendComment('pl','p1')">Send</button>
               </div>
             </li><li class="plan-item">
               <div class="plan-row">
                 <span class="dot wip"></span>
-                <span class="plan-text ">Processar ficheiro</span>
+                <span class="plan-text ">Process file</span>
                 <span class="plan-actions">
-                  <button class="ico play" title="Começar agora" onclick="planPlay('pl','p2')">&#9654;</button>
-                  <button class="ico" title="Editar" onclick="planToggleEdit('pl','p2')">&#9998;</button>
-                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('pl','p2')">&#128172;</button>
-                  <button class="ico" title="Saltar" onclick="planSkip('pl','p2')">&#9197;</button>
-                  <button class="ico" title="Mover para cima" onclick="planMove('pl','p2','up')" >&#9650;</button>
-                  <button class="ico" title="Mover para baixo" onclick="planMove('pl','p2','down')" >&#9660;</button>
+                  <button class="ico play" title="Start now" onclick="planPlay('pl','p2')">&#9654;</button>
+                  <button class="ico" title="Edit" onclick="planToggleEdit('pl','p2')">&#9998;</button>
+                  <button class="ico" title="Ask / discuss this step" onclick="planToggleThread('pl','p2')">&#128172;</button>
+                  <button class="ico" title="Skip" onclick="planSkip('pl','p2')">&#9197;</button>
+                  <button class="ico" title="Move up" onclick="planMove('pl','p2','up')" >&#9650;</button>
+                  <button class="ico" title="Move down" onclick="planMove('pl','p2','down')" >&#9660;</button>
                 </span>
               </div>
               <div id="plan-edit-pl-p2" class="plan-edit" style="display:none">
-                <textarea id="plan-ta-pl-p2" data-orig="Processar ficheiro">Processar ficheiro</textarea>
-                <button onclick="planSaveEdit('pl','p2')">Guardar</button>
+                <textarea id="plan-ta-pl-p2" data-orig="Process file">Process file</textarea>
+                <button onclick="planSaveEdit('pl','p2')">Save</button>
               </div>
               <div id="plan-thread-pl-p2" class="plan-thread" style="display:none">
                 
-                <textarea id="plan-comment-pl-p2" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
-                <button onclick="planSendComment('pl','p2')">Enviar</button>
+                <textarea id="plan-comment-pl-p2" data-orig="" placeholder="Question or comment about this step…"></textarea>
+                <button onclick="planSendComment('pl','p2')">Send</button>
               </div>
             </li><li class="plan-item">
               <div class="plan-row">
                 <span class="dot pending"></span>
-                <span class="plan-text ">Gerar relatório</span>
+                <span class="plan-text ">Generate report</span>
                 <span class="plan-actions">
-                  <button class="ico play" title="Começar agora" onclick="planPlay('pl','p3')">&#9654;</button>
-                  <button class="ico" title="Editar" onclick="planToggleEdit('pl','p3')">&#9998;</button>
-                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('pl','p3')">&#128172;</button>
-                  <button class="ico" title="Saltar" onclick="planSkip('pl','p3')">&#9197;</button>
-                  <button class="ico" title="Mover para cima" onclick="planMove('pl','p3','up')" >&#9650;</button>
-                  <button class="ico" title="Mover para baixo" onclick="planMove('pl','p3','down')" >&#9660;</button>
+                  <button class="ico play" title="Start now" onclick="planPlay('pl','p3')">&#9654;</button>
+                  <button class="ico" title="Edit" onclick="planToggleEdit('pl','p3')">&#9998;</button>
+                  <button class="ico" title="Ask / discuss this step" onclick="planToggleThread('pl','p3')">&#128172;</button>
+                  <button class="ico" title="Skip" onclick="planSkip('pl','p3')">&#9197;</button>
+                  <button class="ico" title="Move up" onclick="planMove('pl','p3','up')" >&#9650;</button>
+                  <button class="ico" title="Move down" onclick="planMove('pl','p3','down')" >&#9660;</button>
                 </span>
               </div>
               <div id="plan-edit-pl-p3" class="plan-edit" style="display:none">
-                <textarea id="plan-ta-pl-p3" data-orig="Gerar relatório">Gerar relatório</textarea>
-                <button onclick="planSaveEdit('pl','p3')">Guardar</button>
+                <textarea id="plan-ta-pl-p3" data-orig="Generate report">Generate report</textarea>
+                <button onclick="planSaveEdit('pl','p3')">Save</button>
               </div>
               <div id="plan-thread-pl-p3" class="plan-thread" style="display:none">
                 
-                <textarea id="plan-comment-pl-p3" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
-                <button onclick="planSendComment('pl','p3')">Enviar</button>
+                <textarea id="plan-comment-pl-p3" data-orig="" placeholder="Question or comment about this step…"></textarea>
+                <button onclick="planSendComment('pl','p3')">Send</button>
               </div>
             </li><li class="plan-item">
               <div class="plan-row">
                 <span class="dot pending"></span>
-                <span class="plan-text ">Enviar por email</span>
+                <span class="plan-text ">Send by email</span>
                 <span class="plan-actions">
-                  <button class="ico play" title="Começar agora" onclick="planPlay('pl','p4')">&#9654;</button>
-                  <button class="ico" title="Editar" onclick="planToggleEdit('pl','p4')">&#9998;</button>
-                  <button class="ico" title="Perguntar / discutir este passo" onclick="planToggleThread('pl','p4')">&#128172;</button>
-                  <button class="ico" title="Saltar" onclick="planSkip('pl','p4')">&#9197;</button>
-                  <button class="ico" title="Mover para cima" onclick="planMove('pl','p4','up')" >&#9650;</button>
-                  <button class="ico" title="Mover para baixo" onclick="planMove('pl','p4','down')" disabled>&#9660;</button>
+                  <button class="ico play" title="Start now" onclick="planPlay('pl','p4')">&#9654;</button>
+                  <button class="ico" title="Edit" onclick="planToggleEdit('pl','p4')">&#9998;</button>
+                  <button class="ico" title="Ask / discuss this step" onclick="planToggleThread('pl','p4')">&#128172;</button>
+                  <button class="ico" title="Skip" onclick="planSkip('pl','p4')">&#9197;</button>
+                  <button class="ico" title="Move up" onclick="planMove('pl','p4','up')" >&#9650;</button>
+                  <button class="ico" title="Move down" onclick="planMove('pl','p4','down')" disabled>&#9660;</button>
                 </span>
               </div>
               <div id="plan-edit-pl-p4" class="plan-edit" style="display:none">
-                <textarea id="plan-ta-pl-p4" data-orig="Enviar por email">Enviar por email</textarea>
-                <button onclick="planSaveEdit('pl','p4')">Guardar</button>
+                <textarea id="plan-ta-pl-p4" data-orig="Send by email">Send by email</textarea>
+                <button onclick="planSaveEdit('pl','p4')">Save</button>
               </div>
               <div id="plan-thread-pl-p4" class="plan-thread" style="display:none">
                 
-                <textarea id="plan-comment-pl-p4" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
-                <button onclick="planSendComment('pl','p4')">Enviar</button>
+                <textarea id="plan-comment-pl-p4" data-orig="" placeholder="Question or comment about this step…"></textarea>
+                <button onclick="planSendComment('pl','p4')">Send</button>
               </div>
-            </li></ul><div class="muted small">1/4 concluídos</div></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('pl')">&#9998;</button></div><div id="cr-box-pl" class="cr-box" style="display:none"><textarea id="cr-ta-pl" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('pl')">Enviar pedido</button></div></div><div id="blk-h3"><h2 class="section">Progresso do agente</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h3')">&#9998;</button></div><div id="cr-box-h3" class="cr-box" style="display:none"><textarea id="cr-ta-h3" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h3')">Enviar pedido</button></div></div><div id="blk-tk"><div class="card"><h3>Pipeline</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="tasks"><li><span class="dot done"></span><span class="done-text">Ler configuração</span></li><li><span class="dot wip"></span><span class="">Processar ficheiro</span></li><li><span class="dot pending"></span><span class="">Gerar relatório</span></li><li><span class="dot blocked"></span><span class="">Enviar por email</span></li></ul><div class="muted small">1/4 concluídas</div></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('tk')">&#9998;</button></div><div id="cr-box-tk" class="cr-box" style="display:none"><textarea id="cr-ta-tk" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('tk')">Enviar pedido</button></div></div><div id="blk-h4"><h2 class="section">Perguntas &amp; decisões</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h4')">&#9998;</button></div><div id="cr-box-h4" class="cr-box" style="display:none"><textarea id="cr-ta-h4" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h4')">Enviar pedido</button></div></div><div id="blk-q1" class="needs-user"><div class="card"><h3>Pergunta</h3><p>Qual o email de destino do relatório?</p><textarea id="ta-q1" data-orig="" placeholder="Escreve a tua resposta..."></textarea><button onclick="answer('q1')">Enviar</button></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('q1')">&#9998;</button></div><div id="cr-box-q1" class="cr-box" style="display:none"><textarea id="cr-ta-q1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('q1')">Enviar pedido</button></div></div><div id="blk-ch" class="needs-user"><div class="card"><h3>Escolha</h3><p>Formato do relatório?</p><div class="opts"><button class="opt" onclick="choose('ch',&quot;PDF&quot;)">PDF</button><button class="opt" onclick="choose('ch',&quot;Excel&quot;)">Excel</button><button class="opt" onclick="choose('ch',&quot;Ambos&quot;)">Ambos</button></div></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('ch')">&#9998;</button></div><div id="cr-box-ch" class="cr-box" style="display:none"><textarea id="cr-ta-ch" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('ch')">Enviar pedido</button></div></div><div id="blk-ap" class="needs-user"><div class="card"><h3>Aprovação</h3><p>Posso enviar o email agora?</p><textarea id="cm-ap" data-orig="" placeholder="Comentário (opcional)"></textarea><div class="opts"><button class="ok" onclick="approve('ap','approved')">Aprovar</button><button class="no" onclick="approve('ap','rejected')">Rejeitar</button></div></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('ap')">&#9998;</button></div><div id="cr-box-ap" class="cr-box" style="display:none"><textarea id="cr-ta-ap" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('ap')">Enviar pedido</button></div></div><div id="blk-fm" class="needs-user"><div class="card"><h3>Formulário</h3><p>Dados do cliente:</p><label class="field"><span>Nome</span><input id="fld-fm-nome" type="text" value="" data-orig=""></label><label class="field"><span>Plano</span><select id="fld-fm-plano"><option>Básico</option><option>Pro</option></select></label><button onclick="submitForm('fm',[&quot;nome&quot;, &quot;plano&quot;])">Enviar</button></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('fm')">&#9998;</button></div><div id="cr-box-fm" class="cr-box" style="display:none"><textarea id="cr-ta-fm" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('fm')">Enviar pedido</button></div></div><div id="blk-lg"><div class="card"><h3>Registo</h3><ul class="log"><li><span class="muted small">10:00</span> Sessão iniciada</li></ul></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('lg')">&#9998;</button></div><div id="cr-box-lg" class="cr-box" style="display:none"><textarea id="cr-ta-lg" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('lg')">Enviar pedido</button></div></div><div id="blk-h5"><h2 class="section">Conversa livre</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h5')">&#9998;</button></div><div id="cr-box-h5" class="cr-box" style="display:none"><textarea id="cr-ta-h5" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h5')">Enviar pedido</button></div></div><div id="blk-chat"><div class="card chat-card"><h3>Conversa<span class="status-chip chat-chip">🟡 O agente está a trabalhar…</span></h3><div class="thread-msgs chat-msgs" id="chat-msgs-chat"><div class="thread-msg user"><b>Tu:</b> Porque escolheste esta abordagem?</div><div class="thread-msg agent"><b>Agente:</b> Porque <strong>X</strong> evita Y — ver decisão em Registo.</div></div><textarea id="chat-ta-chat" data-orig="" placeholder="Escreve uma mensagem..."></textarea><button onclick="chatSend('chat')">Enviar</button></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('chat')">&#9998;</button></div><div id="cr-box-chat" class="cr-box" style="display:none"><textarea id="cr-ta-chat" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('chat')">Enviar pedido</button></div></div><div id="blk-h6"><h2 class="section">Documentos e mockups (sempre atualizados)</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h6')">&#9998;</button></div><div id="cr-box-h6" class="cr-box" style="display:none"><textarea id="cr-ta-h6" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h6')">Enviar pedido</button></div></div><div id="blk-res1"><div class="card"><h3>Documentos e mockups</h3><ul class="res-list"><li class="res-item"><span class="res-glyph">📄</span><span class="res-label">README do projeto<br><code class="res-path small muted"><REPO_ROOT>/README.md</code></span><span class="res-fresh"><span class="muted small">atualizado <FRESH></span></span></li><li class="res-item"><span class="res-glyph">📁</span><span class="res-label">Pasta de entregáveis (exemplo)<br><code class="res-path small muted"><REPO_ROOT></code></span><span class="res-fresh"><span class="muted small">atualizado <FRESH></span></span></li><li class="res-item"><a href="https://figma.com/file/example" target="_blank" rel="noopener">Protótipo Figma (exemplo) 🔗</a></li></ul></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('res1')">&#9998;</button></div><div id="cr-box-res1" class="cr-box" style="display:none"><textarea id="cr-ta-res1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('res1')">Enviar pedido</button></div></div><div id="blk-h7"><h2 class="section">Dá-me ficheiros (arrasta e larga)</h2><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('h7')">&#9998;</button></div><div id="cr-box-h7" class="cr-box" style="display:none"><textarea id="cr-ta-h7" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('h7')">Enviar pedido</button></div></div><div id="blk-up1" class="needs-user"><div class="card upload-card"><p>Arrasta aqui os screenshots (.png, .jpg)</p><div class="upload-zone" id="up-zone-up1" ondragover="uploadDragOver(event)" ondragleave="uploadDragLeave(event)" ondrop="uploadDrop(event,'up1')" onclick="document.getElementById('up-input-up1').click()"><span class="upload-hint">Arrasta ficheiros para aqui ou clica para escolher</span><input type="file" id="up-input-up1" style="display:none" multiple accept=".png,.jpg,.jpeg,.gif,.webp" onchange="uploadPick(this,'up1')"></div></div><div class="block-actions"><button class="ico" title="Pedir alteração" onclick="crToggle('up1')">&#9998;</button></div><div id="cr-box-up1" class="cr-box" style="display:none"><textarea id="cr-ta-up1" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea><button onclick="crSend('up1')">Enviar pedido</button></div></div><div class="card cr-card"><h3>Pedidos em aberto</h3><ul class="log"><li>adiciona uma fase de testes com utilizadores <a href="/#blk-pl">→ pl</a></li></ul></div>
+            </li></ul><div class="muted small">1/4 done</div></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('pl')">&#9998;</button></div><div id="cr-box-pl" class="cr-box" style="display:none"><textarea id="cr-ta-pl" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('pl')">Send request</button></div></div><div id="blk-h3"><h2 class="section">Agent progress</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h3')">&#9998;</button></div><div id="cr-box-h3" class="cr-box" style="display:none"><textarea id="cr-ta-h3" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h3')">Send request</button></div></div><div id="blk-tk"><div class="card"><h3>Pipeline</h3><div class="bar"><div class="bar-fill" style="width:25%"></div></div><ul class="tasks"><li><span class="dot done"></span><span class="done-text">Read configuration</span></li><li><span class="dot wip"></span><span class="">Process file</span></li><li><span class="dot pending"></span><span class="">Generate report</span></li><li><span class="dot blocked"></span><span class="">Send by email</span></li></ul><div class="muted small">1/4 done</div></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('tk')">&#9998;</button></div><div id="cr-box-tk" class="cr-box" style="display:none"><textarea id="cr-ta-tk" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('tk')">Send request</button></div></div><div id="blk-h4"><h2 class="section">Questions &amp; decisions</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h4')">&#9998;</button></div><div id="cr-box-h4" class="cr-box" style="display:none"><textarea id="cr-ta-h4" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h4')">Send request</button></div></div><div id="blk-q1" class="needs-user"><div class="card"><h3>Question</h3><p>Which email should the report go to?</p><textarea id="ta-q1" data-orig="" placeholder="Type your answer…"></textarea><button onclick="answer('q1')">Send</button></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('q1')">&#9998;</button></div><div id="cr-box-q1" class="cr-box" style="display:none"><textarea id="cr-ta-q1" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('q1')">Send request</button></div></div><div id="blk-ch" class="needs-user"><div class="card"><h3>Choice</h3><p>Report format?</p><div class="opts"><button class="opt" onclick="choose('ch',&quot;PDF&quot;)">PDF</button><button class="opt" onclick="choose('ch',&quot;Excel&quot;)">Excel</button><button class="opt" onclick="choose('ch',&quot;Both&quot;)">Both</button></div></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('ch')">&#9998;</button></div><div id="cr-box-ch" class="cr-box" style="display:none"><textarea id="cr-ta-ch" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('ch')">Send request</button></div></div><div id="blk-ap" class="needs-user"><div class="card"><h3>Approval</h3><p>Can I send the email now?</p><textarea id="cm-ap" data-orig="" placeholder="Comment (optional)"></textarea><div class="opts"><button class="ok" onclick="approve('ap','approved')">Approve</button><button class="no" onclick="approve('ap','rejected')">Reject</button></div></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('ap')">&#9998;</button></div><div id="cr-box-ap" class="cr-box" style="display:none"><textarea id="cr-ta-ap" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('ap')">Send request</button></div></div><div id="blk-fm" class="needs-user"><div class="card"><h3>Form</h3><p>Client details:</p><label class="field"><span>Name</span><input id="fld-fm-nome" type="text" value="" data-orig=""></label><label class="field"><span>Plan</span><select id="fld-fm-plano"><option>Basic</option><option>Pro</option></select></label><button onclick="submitForm('fm',[&quot;nome&quot;, &quot;plano&quot;])">Send</button></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('fm')">&#9998;</button></div><div id="cr-box-fm" class="cr-box" style="display:none"><textarea id="cr-ta-fm" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('fm')">Send request</button></div></div><div id="blk-lg"><div class="card"><h3>Log</h3><ul class="log"><li><span class="muted small">10:00</span> Session started</li></ul></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('lg')">&#9998;</button></div><div id="cr-box-lg" class="cr-box" style="display:none"><textarea id="cr-ta-lg" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('lg')">Send request</button></div></div><div id="blk-h5"><h2 class="section">Free conversation</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h5')">&#9998;</button></div><div id="cr-box-h5" class="cr-box" style="display:none"><textarea id="cr-ta-h5" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h5')">Send request</button></div></div><div id="blk-chat"><div class="card chat-card"><h3>Conversation<span class="status-chip chat-chip">🟡 The agent is working…</span></h3><div class="thread-msgs chat-msgs" id="chat-msgs-chat"><div class="thread-msg user"><b>You:</b> Why did you choose this approach?</div><div class="thread-msg agent"><b>Agent:</b> Because <strong>X</strong> avoids Y — see the decision in Log.</div></div><textarea id="chat-ta-chat" data-orig="" placeholder="Type a message…"></textarea><button onclick="chatSend('chat')">Send</button></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('chat')">&#9998;</button></div><div id="cr-box-chat" class="cr-box" style="display:none"><textarea id="cr-ta-chat" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('chat')">Send request</button></div></div><div id="blk-h6"><h2 class="section">Documents &amp; mockups (always up to date)</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h6')">&#9998;</button></div><div id="cr-box-h6" class="cr-box" style="display:none"><textarea id="cr-ta-h6" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h6')">Send request</button></div></div><div id="blk-res1"><div class="card"><h3>Documents &amp; mockups</h3><ul class="res-list"><li class="res-item"><span class="res-glyph">📄</span><span class="res-label">Project README<br><code class="res-path small muted"><REPO_ROOT>/README.md</code></span><span class="res-fresh"><span class="muted small">updated <FRESH></span></span></li><li class="res-item"><span class="res-glyph">📁</span><span class="res-label">Deliverables folder (example)<br><code class="res-path small muted"><REPO_ROOT></code></span><span class="res-fresh"><span class="muted small">updated <FRESH></span></span></li><li class="res-item"><a href="https://figma.com/file/example" target="_blank" rel="noopener">Figma prototype (example) 🔗</a></li></ul></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('res1')">&#9998;</button></div><div id="cr-box-res1" class="cr-box" style="display:none"><textarea id="cr-ta-res1" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('res1')">Send request</button></div></div><div id="blk-h7"><h2 class="section">Hand me files (drag and drop)</h2><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('h7')">&#9998;</button></div><div id="cr-box-h7" class="cr-box" style="display:none"><textarea id="cr-ta-h7" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('h7')">Send request</button></div></div><div id="blk-up1" class="needs-user"><div class="card upload-card"><p>Drag your screenshots here (.png, .jpg)</p><div class="upload-zone" id="up-zone-up1" ondragover="uploadDragOver(event)" ondragleave="uploadDragLeave(event)" ondrop="uploadDrop(event,'up1')" onclick="document.getElementById('up-input-up1').click()"><span class="upload-hint">Drag files here or click to choose</span><input type="file" id="up-input-up1" style="display:none" multiple accept=".png,.jpg,.jpeg,.gif,.webp" onchange="uploadPick(this,'up1')"></div></div><div class="block-actions"><button class="ico" title="Request a change" onclick="crToggle('up1')">&#9998;</button></div><div id="cr-box-up1" class="cr-box" style="display:none"><textarea id="cr-ta-up1" data-orig="" placeholder="What needs to change here?"></textarea><button onclick="crSend('up1')">Send request</button></div></div><div class="card cr-card"><h3>Open requests</h3><ul class="log"><li>add a user-testing phase <a href="/#blk-pl">→ pl</a></li></ul></div>
 </div></div>
 
 <div class="cr-global">
-  <button class="ico" title="Pedir alteração, nova tarefa, ou rever algo" onclick="crToggleGlobal()">&#10133; Pedir alteração, nova tarefa, ou rever algo</button>
+  <button class="ico" title="Request a change, add a task, or revisit something" onclick="crToggleGlobal()">&#10133; Request a change, add a task, or revisit something</button>
   <div id="cr-box-global" class="cr-box" style="display:none">
-    <textarea id="cr-ta-global" data-orig="" placeholder="O que precisas de pedir?"></textarea>
-    <button onclick="crSendGlobal()">Enviar pedido</button>
+    <textarea id="cr-ta-global" data-orig="" placeholder="What do you need to request?"></textarea>
+    <button onclick="crSendGlobal()">Send request</button>
   </div>
 </div>
 <div class="upload-global">
@@ -353,11 +353,11 @@ body.has-nav { max-width:1040px; }
        ondragover="uploadDragOver(event)" ondragleave="uploadDragLeave(event)"
        ondrop="uploadDropGlobal(event)"
        onclick="document.getElementById('up-input-global').click()">
-    <span class="upload-hint">&#128206; Enviar ficheiros para o agente</span>
+    <span class="upload-hint">&#128206; Send files to the agent</span>
     <input type="file" id="up-input-global" multiple style="display:none" onchange="uploadPickGlobal(this)">
   </div>
 </div>
-<footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
+<footer>p<span style="color:var(--accent)">AI</span>nel · your agent's second interface</footer>
 <script>
 // Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md
 // §17.4): '' in single-board mode (`painel serve` -> /event, /version), or
@@ -396,7 +396,7 @@ async function send(payload) {
     if (btn) {
       btn.classList.remove('sending'); btn.disabled = false;
       btn.classList.add('send-error');
-      btn.title = 'Não foi possível enviar — tenta outra vez';
+      btn.title = 'Could not send — try again';
       setTimeout(() => btn.classList.remove('send-error'), 2500);
     }
     return false;  // failure -> no reload; the error state stays visible
@@ -450,7 +450,7 @@ function reloadSoon(ok) { if (ok === false) return; knownVersion = null; setTime
 
 // --- Change requests (M8, docs/SPEC.md §12) ---------------------------------
 // Generic per-block ✎ box (server-injected wrapper markup, not per-block-
-// module) + the global "Pedir alteração" affordance. Open/closed state
+// module) + the global "Request a change" affordance. Open/closed state
 // persists across polls/reloads via sessionStorage, same pattern as plan's
 // open-threads (§1 / planToggleThread above).
 function _openCrBoxes() {
@@ -622,7 +622,7 @@ function isBusy() {
 // The server renders the initial title/favicon/chip; this section keeps them
 // live on every poll tick (not just page load), and fires a Notification on
 // a 0->N pending transition while the tab is hidden.
-const boardTitle = "pAInel — demonstração";
+const boardTitle = "pAInel — demo";
 let pendingCount = 6;
 let agentStatus = "working";
 let hasResolved = false;
@@ -639,15 +639,15 @@ function setFavicon(color) {
   if (link) link.href = FAVICONS[color] || FAVICONS.gray;
 }
 function titleFor(pending, status) {
-  if (pending > 0) return '🔴 ' + pending + ' à tua espera — ' + boardTitle;
+  if (pending > 0) return '🔴 ' + pending + ' waiting on you — ' + boardTitle;
   if (status === 'working') return '🟡 ' + boardTitle;
   return '⚪ ' + boardTitle;
 }
 function chipFor(pending, status, resolved) {
-  if (pending > 0) return '🔴 À espera de ti (' + pending + ')';
-  if (status === 'working') return '🟡 O agente está a trabalhar…';
-  if (resolved) return '✅ Tudo feito';
-  return '⚪ Agente offline';
+  if (pending > 0) return '🔴 Waiting on you (' + pending + ')';
+  if (status === 'working') return '🟡 The agent is working…';
+  if (resolved) return '✅ All done';
+  return '⚪ Agent offline';
 }
 function faviconColorFor(pending, status, resolved) {
   if (pending > 0) return 'red';

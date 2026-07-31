@@ -11,7 +11,7 @@ def render(block: dict, ctx: dict) -> str:
         f'<li><span class="muted small">{e(en.get("ts", ""))}</span> {e(en.get("text", ""))}</li>'
         for en in block.get("entries", [])
     )
-    title = e(block.get("title", "Registo"))
+    title = e(block.get("title", "Log"))
     return f'<div class="card"><h3>{title}</h3><ul class="log">{rows}</ul></div>'
 
 

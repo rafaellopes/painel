@@ -43,7 +43,7 @@ def render(block: dict, ctx: dict) -> str:
             f'{item_change_request_html(block.get("id", ""), it.get("id", ""))}'
             f'</li>'
         )
-    title = e(block.get("title", "A fazer (manual)"))
+    title = e(block.get("title", "To do (manual)"))
     return f'<div class="card"><h3>{title}</h3><ul class="checklist">{"".join(rows)}</ul></div>'
 
 
@@ -60,7 +60,7 @@ def needs_user(block: dict) -> list:
     bid = block.get("id", "")
     n = sum(1 for it in block.get("items", []) if not it.get("checked"))
     if n:
-        return [(bid, f"{n} passo{'s' if n > 1 else ''} manua{'is' if n > 1 else 'l'} por marcar")]
+        return [(bid, f"{n} manual step{'s' if n > 1 else ''} to check off")]
     return []
 
 

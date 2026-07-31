@@ -121,8 +121,8 @@ Each project's URL comes from a **slug** derived once from its `meta.project`
 (or its directory name) — `Livrete` → `/livrete`, `rececao.pt` → `/rececao-pt`.
 It's generated once and stored, so retitling a board never breaks your bookmark.
 
-Every board page carries a **breadcrumb** (`Todos os projetos › <projeto> ›
-<página>`) and a persistent **project switcher** in the sidebar: it lists every
+Every board page carries a **breadcrumb** (`All projects › <project> ›
+<page>`) and a persistent **project switcher** in the sidebar: it lists every
 registered project with its own pending count, so work waiting on you *in other
 projects* is visible without going back to the directory — the count travels
 with you. Your board's own pending items stay in the attention bar up top; the
@@ -185,7 +185,7 @@ free.
   before pointing any tunnel at pAInel.** Without that, you have published every
   credential on every board to anyone with the URL.
 - **The `upload` block writes to disk.** When the human drops files into an
-  `upload` block (or the global "📎 Enviar ficheiros" affordance at the bottom
+  `upload` block (or the global "📎 Send files" affordance at the bottom
   of every board), they're saved under the project directory — next to
   `board.json`, never uploaded anywhere remote. Filenames are sanitized, capped
   at 25 MB, and can never escape the project dir. This is one more reason the
@@ -198,7 +198,7 @@ The inverse of `resources`: instead of the agent showing you files, **you** drop
 files in and the agent picks up where they landed. The agent composes an
 `upload` block choosing the destination (`dest_dir`, relative to the project),
 so you never have to know or ask a path — you just drag and drop. Every board
-also has a persistent global **📎 Enviar ficheiros para o agente** drop zone at
+also has a persistent global **📎 Send files to the agent** drop zone at
 the bottom (files go to `painel-uploads/`), so there is always somewhere to hand
 over a file the agent didn't explicitly ask for. Each dropped file is written to
 disk and emits a `file_added` event the agent reacts to.
@@ -206,9 +206,9 @@ disk and emits a `file_added` event the agent reacts to.
 ### Catching the wrong block before you see it — `painel lint`
 
 The most common mistake an agent makes composing a board is putting something
-in a **checklist** that isn't a yes/no step: *"Ter pelo menos 2 contas de
-condutor de teste"*, *"Responder às perguntas do README (nome, projetos,
-email)"*. Ticking those tells the agent nothing — the information you were
+in a **checklist** that isn't a yes/no step: *"Have at least 2 test driver
+accounts"*, *"Answer the README questions (name, projects, email)"*. Ticking
+those tells the agent nothing — the information you were
 supposed to hand over is swallowed by a checkbox. Those should have been a
 `question` or a `form`.
 

@@ -92,7 +92,7 @@ def _block_html(b: dict, ctx: dict) -> str:
     t = b.get("type")
     mod = REGISTRY.get(t)
     if mod is None:
-        return f'<div class="card muted">bloco desconhecido: {e(t)}</div>'
+        return f'<div class="card muted">unknown block: {e(t)}</div>'
     return mod.render(b, ctx)
 
 
@@ -170,7 +170,7 @@ def _append_change_request(board: dict, data: dict) -> dict:
 
 
 def _change_requests_html(board: dict, base: str = "") -> str:
-    """'Pedidos em aberto' card (§12.4) -- board-level rendering, not a
+    """'Open requests' card (§12.4) -- board-level rendering, not a
     blocks/*.py module, since change_requests is board-level state, not a
     block. Reuses log-block-style rows conceptually."""
     open_crs = _open_change_requests(board)
@@ -185,7 +185,7 @@ def _change_requests_html(board: dict, base: str = "") -> str:
         item_id = cr.get("item")
         item_suffix = ""
         if bid and item_id:
-            # Resolve the item's own text (M12) so "Pedidos em aberto" is
+            # Resolve the item's own text (M12) so "Open requests" is
             # readable without opening the board to figure out which of N
             # checklist items the human meant -- best-effort, falls back to
             # nothing if the item was since removed/renamed.
@@ -204,7 +204,7 @@ def _change_requests_html(board: dict, base: str = "") -> str:
             link = ""
         rows.append(f"<li>{text}{item_suffix}{link}</li>")
     return (
-        '<div class="card cr-card"><h3>Pedidos em aberto</h3>'
+        '<div class="card cr-card"><h3>Open requests</h3>'
         f'<ul class="log">{"".join(rows)}</ul></div>'
     )
 
@@ -310,15 +310,15 @@ def _nav_html(board: dict, active_page, base: str = "") -> str:
 def _breadcrumb_html(board: dict, active_page, base_path: str, service_mode: bool) -> str:
     """The linked trail atop every board page (§18.1):
 
-        📋 Todos os projetos › <Projeto> › <Página>
+        📋 All projects › <Project> › <Page>
 
-    On a board's Home the trail stops at <Projeto> (no page segment). Under the
-    unified service `Todos os projetos` links to `/` (the directory) and
-    <Projeto> links to the board's Home (`/<slug>`); the current segment is
+    On a board's Home the trail stops at <Project> (no page segment). Under the
+    unified service `All projects` links to `/` (the directory) and
+    <Project> links to the board's Home (`/<slug>`); the current segment is
     always plain text -- you're on it.
 
     In single-board `painel serve` there is no directory and no `/` route to
-    link to (§18.1): the `Todos os projetos` segment is omitted entirely and
+    link to (§18.1): the `All projects` segment is omitted entirely and
     the project segment is plain text, so the breadcrumb never points at a
     route this mode doesn't serve. The server knows its mode (same signal M13
     threads for the base path), so this is decided server-side, never in JS."""
@@ -326,7 +326,7 @@ def _breadcrumb_html(board: dict, active_page, base_path: str, service_mode: boo
     sep = '<span class="crumb-sep">›</span>'
     parts = []
     if service_mode:
-        parts.append('<a href="/">📋 Todos os projetos</a>')
+        parts.append('<a href="/">📋 All projects</a>')
         if active_page is None:
             parts.append(f'<span class="crumb-current">{e(board_title)}</span>')
         else:
@@ -348,7 +348,7 @@ def _switcher_html(board: dict, slug, entries) -> str:
     with its own pending badge -- the exact same per-project count the
     directory card shows, computed by the shared `directory._needs_user_count`
     so the two can never drift. The current project is marked; the collapsed
-    summary calls out "N à tua espera noutros projetos" whenever any OTHER
+    summary calls out "N waiting on you in other projects" whenever any OTHER
     project has pending, which is what makes that count travel across pages.
 
     Under single-board `painel serve` there is no registry (`entries is None`),
@@ -375,9 +375,9 @@ def _switcher_html(board: dict, slug, entries) -> str:
             f'{e(entry["title"])}{_badge(count)}</a>'
         )
     if others_pending > 0:
-        summary = f"{others_pending} à tua espera noutros projetos"
+        summary = f"{others_pending} waiting on you in other projects"
     else:
-        summary = "Mudar de projeto"
+        summary = "Switch project"
     return (
         '<div class="switcher">'
         f'<div class="switcher-current">📋 {e(board_title)}</div>'
@@ -408,7 +408,7 @@ def _status_chip(pending: int, agent_status: str, has_resolved: bool) -> str:
 def _title_text(board_title: str, pending: int, agent_status: str) -> str:
     """<title> text (§10.2)."""
     if pending > 0:
-        return f"🔴 {pending} à tua espera — {board_title}"
+        return f"🔴 {pending} waiting on you — {board_title}"
     if agent_status == "working":
         return f"🟡 {board_title}"
     return f"⚪ {board_title}"
@@ -446,7 +446,7 @@ def _whose_turn(board: dict, blocks_html: str, pending_count: int) -> dict:
 
 
 def _change_request_box_html(block_id) -> str:
-    """The generic ✎ 'Pedir alteração' button + inline collapsed box injected
+    """The generic ✎ 'Request a change' button + inline collapsed box injected
     into every block's wrapper div by render() itself -- NOT by any
     blocks/*.py module, reusing §6.5's exact generic-wrapper reasoning so
     every block type, present and future, gets this for free (docs/SPEC.md
@@ -454,11 +454,11 @@ def _change_request_box_html(block_id) -> str:
     bid = e(block_id)
     return (
         f'<div class="block-actions">'
-        f'<button class="ico" title="Pedir alteração" onclick="crToggle(\'{bid}\')">&#9998;</button>'
+        f'<button class="ico" title="Request a change" onclick="crToggle(\'{bid}\')">&#9998;</button>'
         f'</div>'
         f'<div id="cr-box-{bid}" class="cr-box" style="display:none">'
-        f'<textarea id="cr-ta-{bid}" data-orig="" placeholder="O que precisa de mudar aqui?"></textarea>'
-        f'<button onclick="crSend(\'{bid}\')">Enviar pedido</button>'
+        f'<textarea id="cr-ta-{bid}" data-orig="" placeholder="What needs to change here?"></textarea>'
+        f'<button onclick="crSend(\'{bid}\')">Send request</button>'
         f'</div>'
     )
 
@@ -481,7 +481,7 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     `entries` is M14's addition (docs/SPEC.md §18): the registry snapshot the
     project switcher itemizes, passed only by the unified service. None means
     single-board mode -- the shell degrades to just the current project's name,
-    and the breadcrumb drops the `Todos os projetos` / `/` directory segment
+    and the breadcrumb drops the `All projects` / `/` directory segment
     (there is no directory to link to). It IS the mode signal for the shell,
     the same way `slug`/`base_path` are for the channel and endpoints."""
     service_mode = entries is not None
@@ -521,8 +521,8 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     meta = board.get("meta", {})
     metaline = " · ".join(
         filter(None, [
-            f'Projeto: {e(meta["project"])}' if meta.get("project") else "",
-            f'Atualizado: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
+            f'Project: {e(meta["project"])}' if meta.get("project") else "",
+            f'Updated: {e(meta["updated_at"])}' if meta.get("updated_at") else "",
         ])
     )
     # Attention bar (uses `pending` computed above, which already spans all pages).
@@ -540,7 +540,7 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
             links.append(f'<a href="{e(href)}">{e(label)}</a>')
         attention = (
             f'<div class="attention"><span class="attention-count">{len(pending)}</span> '
-            f'à tua espera: {" · ".join(links)}</div>'
+            f'waiting on you: {" · ".join(links)}</div>'
         )
     else:
         attention = ""
@@ -618,11 +618,11 @@ def apply_event(board_path: str, data: dict) -> bool:
                 if handled and ev in getattr(mod, "SILENT_EVENTS", ()):
                     silent = True
                 if not handled:
-                    print(f"pAInel: evento {ev!r} não reconhecido pelo bloco {blk.get('id')!r}", file=sys.stderr)
+                    print(f"pAInel: event {ev!r} not recognized by block {blk.get('id')!r}", file=sys.stderr)
             else:
-                print(f"pAInel: tipo de bloco desconhecido {blk.get('type')!r}", file=sys.stderr)
+                print(f"pAInel: unknown block type {blk.get('type')!r}", file=sys.stderr)
         else:
-            print(f"pAInel: bloco {data.get('block')!r} não encontrado para evento {ev!r}", file=sys.stderr)
+            print(f"pAInel: block {data.get('block')!r} not found for event {ev!r}", file=sys.stderr)
         save_board(board_path, board)
     return silent
 
@@ -661,7 +661,7 @@ def emit_event(data: dict, board_path: str | None = None) -> None:
         except OSError as exc:
             # Never let a log-write failure break the interaction itself: the
             # board is already saved by the time we get here.
-            print(f"pAInel: não consegui escrever em {board_log_path(board_path)!r}: {exc}",
+            print(f"pAInel: could not write to {board_log_path(board_path)!r}: {exc}",
                   file=sys.stderr)
     sys.stdout.write(line)
     sys.stdout.flush()
@@ -789,7 +789,7 @@ def sanitize_filename(name: str) -> str:
     name = _FILENAME_STRIP_RE.sub("", name)
     name = name.lstrip(".")
     if not name:
-        return "ficheiro"
+        return "file"
     return name
 
 
@@ -839,7 +839,7 @@ def save_uploads(board_path: str, block_id, parsed: list) -> tuple:
         # than a symlink-resolved one (e.g. /var vs macOS's /private/var).
         dest = os.path.normpath(os.path.join(project_dir, dest_rel))
         if _contain(project_dir, dest) is None:
-            return [], f"destino fora do projeto: {dest_rel}"
+            return [], f"destination outside the project: {dest_rel}"
         os.makedirs(dest, exist_ok=True)
         for filename, content in parsed:
             safe = sanitize_filename(filename)
@@ -930,20 +930,20 @@ class _Routes:
         boundary = _boundary_from_content_type(ctype)
         length = int(self.headers.get("Content-Length", 0) or 0)
         if boundary is None or length <= 0:
-            self._json_error(400, "esperava multipart/form-data com ficheiros")
+            self._json_error(400, "expected multipart/form-data with files")
             return
         # Memory guard (§19.4.3): refuse an over-large body before buffering it.
         if length > _MAX_REQUEST_BYTES:
-            self._json_error(413, "envio demasiado grande")
+            self._json_error(413, "upload too large")
             return
         body = self.rfile.read(length)
         try:
             parsed = parse_multipart(body, boundary)
         except UploadTooLarge:
-            self._json_error(413, "ficheiro demasiado grande (máximo 25 MB por ficheiro)")
+            self._json_error(413, "file too large (max 25 MB per file)")
             return
         if not parsed:
-            self._json_error(400, "nenhum ficheiro no envio")
+            self._json_error(400, "no file in the upload")
             return
         events, err = save_uploads(board_path, block_id, parsed)
         if err is not None:

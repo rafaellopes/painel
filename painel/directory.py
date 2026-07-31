@@ -24,10 +24,10 @@ from .blocks.base import e, agent_status as _agent_status, status_chip_text as _
 from .page import _PAGE
 
 STRINGS = {
-    "title": "pAInel — os teus projetos",
-    "empty": "Nenhum projeto registado. Corre 'painel add' na pasta de um projeto.",
-    "missing": "⚠ board não encontrado neste caminho",
-    "unknown": "pAInel — projeto desconhecido",
+    "title": "pAInel — your projects",
+    "empty": "No project registered. Run 'painel add' in a project folder.",
+    "missing": "⚠ board not found at this path",
+    "unknown": "pAInel — unknown project",
 }
 
 
@@ -71,7 +71,7 @@ def _card_html(entry: dict) -> str:
     pending = _needs_user_count(board)
     has_resolved = False  # not worth rendering every block's HTML just for this
     chip = _status_chip_text(pending, _agent_status(board), has_resolved)
-    metaline = f"Projeto: {e(project)}" if project else ""
+    metaline = f"Project: {e(project)}" if project else ""
     return (
         f'<a class="card dir-card" href="/{e(entry["slug"])}">'
         f'<h3>{e(title)}</h3>'
@@ -128,14 +128,14 @@ def render_unknown_slug(slug: str, entries: list) -> str:
             f'<code>/{e(x["slug"])}</code></li>'
             for x in entries
         )
-        known = f'<div class="card"><h3>Projetos registados</h3><ul class="log">{listing}</ul></div>'
+        known = f'<div class="card"><h3>Registered projects</h3><ul class="log">{listing}</ul></div>'
     else:
         known = f'<div class="card muted">{e(STRINGS["empty"])}</div>'
     head = (
         f'<div class="card note note-warn">'
-        f'<p>Não há nenhum projeto registado como <code>{e(slug)}</code>.</p>'
-        f'<p class="muted small">Ou o endereço tem uma gralha, ou o projeto foi removido. '
-        f'Para registar: <code>painel add &lt;pasta&gt;</code>.</p>'
+        f'<p>No project is registered as <code>{e(slug)}</code>.</p>'
+        f'<p class="muted small">Either the address has a typo, or the project was removed. '
+        f'To register: <code>painel add &lt;folder&gt;</code>.</p>'
         f'</div>'
     )
     return _shell(STRINGS["unknown"], head + known)

@@ -11,11 +11,11 @@ from .base import e, md_inline, status_chip_text
 TYPE = "chat"
 
 STRINGS = {
-    "title": "Conversa",
-    "you": "Tu",
-    "agent": "Agente",
-    "placeholder": "Escreve uma mensagem...",
-    "send": "Enviar",
+    "title": "Conversation",
+    "you": "You",
+    "agent": "Agent",
+    "placeholder": "Type a message…",
+    "send": "Send",
 }
 
 
@@ -79,7 +79,7 @@ def needs_user(block: dict) -> list:
     attention bar. §6.2 defines the attention bar as everything currently
     waiting on the HUMAN. When the last message is from the user, the human
     has already acted -- it's the AGENT that owes a reply. Putting that in
-    the yellow "à tua espera" bar would tell the human they need to act when
+    the yellow "waiting on you" bar would tell the human they need to act when
     they just did; the correct signal for "agent owes a reply" is the
     existing M5 whose-turn machinery (meta.agent_status / the header + this
     card's own chip), not the human-facing attention bar. The unanswered

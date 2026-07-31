@@ -1253,21 +1253,38 @@ A **conservative, high-precision** heuristic over `checklist` item text. Flag
 an item when it looks like it wants an *answer* rather than a *tick*:
 
 - the text ends with `?` (after stripping trailing whitespace/markup), or
-- it contains an answer-requesting marker, case- and accent-insensitively:
+- it contains an answer-requesting marker, case- and accent-insensitively.
+
+The marker list is **bilingual**. The UI language of pAInel is English, but the
+markers match the *agent-composed board text*, which is a separate axis: the
+repo owner composes Portuguese boards, and the international audience composes
+English ones, so both must be caught. The Portuguese markers (all earned or
+plausible per the reasoning below) are:
   `responder`, `responde`, `indicar`, `indica`, `informar`, `informe`,
-  `qual`, `quais`, `quanto`, `quantos`, `definir`, `escolher`, `escolhe`,
+  `qual`, `quais`, `quanto`, `quantos`,
   `preencher`, `preenche`, `diz-me`, `dá-me`, `da-me`, `envia-me`,
   `confirmar com` (i.e. "confirmar com o sócio: X ou Y?").
+The English side is the **direct equivalents of those same earned concepts**,
+nothing speculative added:
+  `answer`, `which`, `how many`, `provide`, `specify`, `fill in`, `tell me`,
+  `confirm with`.
+The ends-with-`?` rule is language-neutral and covers both. Note what is
+**absent from both languages**: `escolher`/`escolhe`/`definir` and their English
+equivalents `choose`/`select`/`define` — these were dropped after real false
+positives (§20.5); re-adding either side would reintroduce the same class.
 
-Deliberately **not** flagged: plain actions (`fazer login`, `descarregar`,
-`publicar`, `gravar`, `criar conta`, `largar`, `colocar`) — these are exactly
-what `checklist` is for. Prefer **false negatives over false positives**: a
-noisy linter gets ignored, which would defeat the whole milestone. If you
-are unsure about a marker, leave it out.
+Deliberately **not** flagged: plain actions (`fazer login`/`log in`,
+`descarregar`/`download`, `publicar`/`publish`, `gravar`/`record`,
+`criar conta`, `largar`, `colocar`/`put`) — these are exactly what `checklist`
+is for. Prefer **false negatives over false positives**: a noisy linter gets
+ignored, which would defeat the whole milestone. If you are unsure about a
+marker, leave it out.
 
 Accent-insensitivity matters (`dá-me`/`da-me`, `Responder`/`responder`) —
 fold with the same NFKD→ascii approach `registry.slugify` already uses; do
-not hand-write a second accent table.
+not hand-write a second accent table. Word-boundary matching applies to both
+languages (so `which` inside `whichever`, like `qual` inside `qualidade`, does
+not fire).
 
 ### 20.2 Three layers, each catching what the previous one misses
 
@@ -1352,6 +1369,12 @@ back — genuinely done/not-done steps. `escolher`/`escolhe` were removed, and
 observed incident). After the change: **59 items, 0 findings**, with the
 incidents still caught. Both real false-positive texts are pinned verbatim as
 negative tests, so re-introducing a marker that flags them fails the suite.
+
+When the markers were made bilingual (§20.1), their English equivalents
+`choose`/`select`/`define` were **deliberately not added** for the same reason:
+"choose one and instrument a product of yours" is the exact English shape of the
+measured Portuguese false positive above, so those English markers would
+reintroduce the same known regression. English negative tests pin this.
 
 Honest note on confidence: of the surviving markers, only `responder`,
 `confirmar com` and the ends-with-`?` rule were earned by observed incidents.

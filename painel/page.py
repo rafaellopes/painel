@@ -4,7 +4,7 @@ Page shell: the _PAGE HTML template, global CSS, and global JS.
 Per-block JS (from each block module's JS constant) is joined in and
 inserted at the {block_js} placeholder by server.py.
 
-The {cr_global} placeholder holds the M8 global "Pedir alteração" affordance
+The {cr_global} placeholder holds the M8 global "Request a change" affordance
 (docs/SPEC.md §12.3) -- a real board's render() fills it with CR_GLOBAL_HTML;
 the directory (M13, painel/directory.py) fills it with "" since it's host-app
 chrome, not a board, and change requests don't apply to it.
@@ -31,10 +31,10 @@ break single-board mode's page URLs. The server always knows which mode it is.
 from __future__ import annotations
 
 CR_GLOBAL_HTML = """<div class="cr-global">
-  <button class="ico" title="Pedir alteração, nova tarefa, ou rever algo" onclick="crToggleGlobal()">&#10133; Pedir alteração, nova tarefa, ou rever algo</button>
+  <button class="ico" title="Request a change, add a task, or revisit something" onclick="crToggleGlobal()">&#10133; Request a change, add a task, or revisit something</button>
   <div id="cr-box-global" class="cr-box" style="display:none">
-    <textarea id="cr-ta-global" data-orig="" placeholder="O que precisas de pedir?"></textarea>
-    <button onclick="crSendGlobal()">Enviar pedido</button>
+    <textarea id="cr-ta-global" data-orig="" placeholder="What do you need to request?"></textarea>
+    <button onclick="crSendGlobal()">Send request</button>
   </div>
 </div>"""
 
@@ -51,13 +51,13 @@ UPLOAD_GLOBAL_HTML = """<div class="upload-global">
        ondragover="uploadDragOver(event)" ondragleave="uploadDragLeave(event)"
        ondrop="uploadDropGlobal(event)"
        onclick="document.getElementById('up-input-global').click()">
-    <span class="upload-hint">&#128206; Enviar ficheiros para o agente</span>
+    <span class="upload-hint">&#128206; Send files to the agent</span>
     <input type="file" id="up-input-global" multiple style="display:none" onchange="uploadPickGlobal(this)">
   </div>
 </div>"""
 
 _PAGE = """<!doctype html>
-<html lang="pt"><head>
+<html lang="en"><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title>
@@ -159,7 +159,7 @@ button.no {{ background:var(--blocked); color:#2a0a0a; margin-left:.5rem; }}
 .needs-user {{ position:relative; }}
 .needs-user > .card {{ border-left:4px solid var(--wip); }}
 .needs-user::before {{
-  content:"⏳ à tua espera"; position:absolute; top:-.65rem; right:.9rem;
+  content:"⏳ waiting on you"; position:absolute; top:-.65rem; right:.9rem;
   background:var(--wip); color:#1a1a1a; font-size:.68rem; font-weight:700;
   letter-spacing:.02em; padding:.15rem .55rem; border-radius:999px; z-index:1;
 }}
@@ -203,7 +203,7 @@ footer {{ color:var(--muted); font-size:.72rem; text-align:center; margin-top:1.
   background:var(--border); color:var(--text); font-size:.78rem; font-weight:500; }}
 /* --- Change requests (M8, docs/SPEC.md §12) -- generic per-block ✎ button
    + inline box injected by render() itself (not by any blocks/*.py module),
-   plus the global affordance and the "Pedidos em aberto" card. --- */
+   plus the global affordance and the "Open requests" card. --- */
 .block-actions {{ display:flex; justify-content:flex-end; gap:.15rem; margin-bottom:.3rem; }}
 .cr-box {{ margin-bottom:.6rem; }}
 .cr-card ul.log a {{ color:var(--accent); text-decoration:underline; font-size:.82rem; }}
@@ -299,7 +299,7 @@ body.has-nav {{ max-width:1040px; }}
   .app-shell {{ width:100%; position:static; margin-bottom:1rem; }}
 }}
 </style></head><body{nav_class}>
-<div id="dup-notice">👉 já tens este pAInel aberto — a fechar este separador</div>
+<div id="dup-notice">👉 you already have this pAInel open — closing this tab</div>
 {attention}
 {breadcrumb}
 <header id="page-header">
@@ -310,7 +310,7 @@ body.has-nav {{ max-width:1040px; }}
 {page_shell_open}{nav}{page_main_open}{blocks}{page_main_close}{page_shell_close}
 {cr_global}
 {upload_global}
-<footer>p<span style="color:var(--accent)">AI</span>nel · a segunda interface do teu agente</footer>
+<footer>p<span style="color:var(--accent)">AI</span>nel · your agent's second interface</footer>
 <script>
 // Every endpoint this page talks to hangs off basePath (M13, docs/SPEC.md
 // §17.4): '' in single-board mode (`painel serve` -> /event, /version), or
@@ -349,7 +349,7 @@ async function send(payload) {{
     if (btn) {{
       btn.classList.remove('sending'); btn.disabled = false;
       btn.classList.add('send-error');
-      btn.title = 'Não foi possível enviar — tenta outra vez';
+      btn.title = 'Could not send — try again';
       setTimeout(() => btn.classList.remove('send-error'), 2500);
     }}
     return false;  // failure -> no reload; the error state stays visible
@@ -403,7 +403,7 @@ function reloadSoon(ok) {{ if (ok === false) return; knownVersion = null; setTim
 
 // --- Change requests (M8, docs/SPEC.md §12) ---------------------------------
 // Generic per-block ✎ box (server-injected wrapper markup, not per-block-
-// module) + the global "Pedir alteração" affordance. Open/closed state
+// module) + the global "Request a change" affordance. Open/closed state
 // persists across polls/reloads via sessionStorage, same pattern as plan's
 // open-threads (§1 / planToggleThread above).
 function _openCrBoxes() {{
@@ -497,15 +497,15 @@ function setFavicon(color) {{
   if (link) link.href = FAVICONS[color] || FAVICONS.gray;
 }}
 function titleFor(pending, status) {{
-  if (pending > 0) return '🔴 ' + pending + ' à tua espera — ' + boardTitle;
+  if (pending > 0) return '🔴 ' + pending + ' waiting on you — ' + boardTitle;
   if (status === 'working') return '🟡 ' + boardTitle;
   return '⚪ ' + boardTitle;
 }}
 function chipFor(pending, status, resolved) {{
-  if (pending > 0) return '🔴 À espera de ti (' + pending + ')';
-  if (status === 'working') return '🟡 O agente está a trabalhar…';
-  if (resolved) return '✅ Tudo feito';
-  return '⚪ Agente offline';
+  if (pending > 0) return '🔴 Waiting on you (' + pending + ')';
+  if (status === 'working') return '🟡 The agent is working…';
+  if (resolved) return '✅ All done';
+  return '⚪ Agent offline';
 }}
 function faviconColorFor(pending, status, resolved) {{
   if (pending > 0) return 'red';

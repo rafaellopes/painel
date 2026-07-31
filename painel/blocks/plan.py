@@ -27,7 +27,7 @@ def render(block: dict, ctx: dict) -> str:
         reply_dot = '<span class="reply-dot"></span>' if unread else ""
         thread_msgs = "".join(
             f'<div class="thread-msg {e(m.get("from",""))}">'
-            f'<b>{"Tu" if m.get("from") == "user" else "Agente"}:</b> {md_inline(e(m.get("text","")))}</div>'
+            f'<b>{"You" if m.get("from") == "user" else "Agent"}:</b> {md_inline(e(m.get("text","")))}</div>'
             for m in thread
         )
         rows.append(f'''<li class="plan-item">
@@ -35,31 +35,31 @@ def render(block: dict, ctx: dict) -> str:
                 <span class="dot {e(st)}"></span>
                 <span class="plan-text {tc}">{md_inline(text)}</span>
                 <span class="plan-actions">
-                  <button class="ico play" title="Começar agora" onclick="planPlay('{bid}','{iid}')">&#9654;</button>
-                  <button class="ico" title="Editar" onclick="planToggleEdit('{bid}','{iid}')">&#9998;</button>
-                  <button class="ico{reply_cls}" title="{"Resposta nova do agente!" if unread else "Perguntar / discutir este passo"}" onclick="planToggleThread('{bid}','{iid}')">&#128172;{badge}{reply_dot}</button>
-                  <button class="ico" title="Saltar" onclick="planSkip('{bid}','{iid}')">&#9197;</button>
-                  <button class="ico" title="Mover para cima" onclick="planMove('{bid}','{iid}','up')" {"disabled" if idx == 0 else ""}>&#9650;</button>
-                  <button class="ico" title="Mover para baixo" onclick="planMove('{bid}','{iid}','down')" {"disabled" if idx == len(items) - 1 else ""}>&#9660;</button>
+                  <button class="ico play" title="Start now" onclick="planPlay('{bid}','{iid}')">&#9654;</button>
+                  <button class="ico" title="Edit" onclick="planToggleEdit('{bid}','{iid}')">&#9998;</button>
+                  <button class="ico{reply_cls}" title="{"New reply from the agent!" if unread else "Ask / discuss this step"}" onclick="planToggleThread('{bid}','{iid}')">&#128172;{badge}{reply_dot}</button>
+                  <button class="ico" title="Skip" onclick="planSkip('{bid}','{iid}')">&#9197;</button>
+                  <button class="ico" title="Move up" onclick="planMove('{bid}','{iid}','up')" {"disabled" if idx == 0 else ""}>&#9650;</button>
+                  <button class="ico" title="Move down" onclick="planMove('{bid}','{iid}','down')" {"disabled" if idx == len(items) - 1 else ""}>&#9660;</button>
                 </span>
               </div>
               <div id="plan-edit-{bid}-{iid}" class="plan-edit" style="display:none">
                 <textarea id="plan-ta-{bid}-{iid}" data-orig="{text}">{text}</textarea>
-                <button onclick="planSaveEdit('{bid}','{iid}')">Guardar</button>
+                <button onclick="planSaveEdit('{bid}','{iid}')">Save</button>
               </div>
               <div id="plan-thread-{bid}-{iid}" class="plan-thread" style="display:none">
                 {f'<div class="thread-msgs">{thread_msgs}</div>' if thread else ''}
-                <textarea id="plan-comment-{bid}-{iid}" data-orig="" placeholder="Pergunta ou comentário sobre este passo..."></textarea>
-                <button onclick="planSendComment('{bid}','{iid}')">Enviar</button>
+                <textarea id="plan-comment-{bid}-{iid}" data-orig="" placeholder="Question or comment about this step…"></textarea>
+                <button onclick="planSendComment('{bid}','{iid}')">Send</button>
               </div>
             </li>''')
-    title = e(block.get("title", "Plano"))
+    title = e(block.get("title", "Plan"))
     return (
         f'<div class="card"><h3>{title}</h3>'
         f'<div class="bar"><div class="bar-fill" style="width:{pct}%"></div></div>'
         f'<ul class="plan-items">{"".join(rows)}</ul>'
-        f'<div class="muted small">{done}/{total} concluídos'
-        f'{" · " + str(len(items) - total) + " saltados" if len(items) > total else ""}</div></div>'
+        f'<div class="muted small">{done}/{total} done'
+        f'{" · " + str(len(items) - total) + " skipped" if len(items) > total else ""}</div></div>'
     )
 
 
@@ -108,7 +108,7 @@ def needs_user(block: dict) -> list:
     for it in block.get("items", []):
         th = it.get("thread", [])
         if th and th[-1].get("from") == "agent" and it.get("seen", 0) < len(th):
-            out.append((bid, f"Resposta nova em “{it.get('text', '')[:40]}”"))
+            out.append((bid, f"New reply on “{it.get('text', '')[:40]}”"))
     return out
 
 
