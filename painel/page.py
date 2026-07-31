@@ -347,6 +347,37 @@ body.phase-done      {{ --accent:#9aa0aa; --phase-space:.85rem; }}    /* muted, 
 body[class*="phase-"] .card {{ margin-bottom:var(--phase-space,.85rem); }}
 body.phase-done .page-main {{ opacity:.85; filter:saturate(.72); }}   /* subtle archived wash */
 .phase-pill {{ margin-left:.4rem; }}
+/* --- M2 batch-1 blocks (docs/SPEC.md §5.2). All colors via existing tokens
+   (--accent/--wip warn/--blocked danger/--muted/--border), theme-aware for
+   free. countdown: label + JS-driven remaining time; overdue turns danger-red.
+   rating: a star row. table: a horizontally-scrolling grid. gauge: bar + big
+   number, warn color past the threshold. --- */
+.cd-label {{ font-size:1rem; margin-bottom:.35rem; }}
+.cd-remaining {{ font-size:1.5rem; font-weight:700; color:var(--text); }}
+.cd-deadline {{ font-weight:400; }}
+.countdown-card.cd-overdue {{ border-left:4px solid var(--blocked); }}
+.countdown-card.cd-overdue .cd-remaining,
+.countdown-card.cd-overdue .cd-state {{ color:var(--blocked); }}
+.rating-stars {{ display:flex; gap:.15rem; font-size:1.5rem; line-height:1; }}
+.rating-stars .star {{ background:transparent; border:none; padding:0 .05rem; margin:0;
+  color:var(--wip); cursor:pointer; font-size:1.5rem; line-height:1; }}
+button.star:hover {{ filter:none; }}
+.rating-stars span.star {{ color:var(--wip); }}
+.rating-stars span.star:not(.on) {{ color:var(--muted); }}
+.rating-labels {{ display:flex; justify-content:space-between; margin-top:.3rem; }}
+.table-scroll {{ overflow-x:auto; margin:.2rem 0 .4rem; }}
+table.data-table {{ border-collapse:collapse; width:100%; font-size:.86rem; }}
+table.data-table th, table.data-table td {{ text-align:left; padding:.35rem .55rem;
+  border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }}
+table.data-table th {{ color:var(--muted); text-transform:uppercase; font-size:.66rem;
+  letter-spacing:.06em; }}
+table.data-table td input[type=text] {{ width:auto; min-width:8ch; margin:0; padding:.25rem .4rem; }}
+table.data-table td input[type=checkbox] {{ width:16px; height:16px; margin:0;
+  accent-color:var(--accent); }}
+.gauge-value {{ margin:.1rem 0 .3rem; }}
+.gauge-num {{ font-size:1.7rem; font-weight:700; color:var(--text); }}
+.gauge-card.gauge-warn .gauge-num {{ color:var(--wip); }}
+.bar-fill.gauge-fill-warn {{ background:var(--wip); }}
 @media (max-width:600px) {{
   .page-shell {{ flex-direction:column; gap:0; }}
   .pages-nav {{ width:100%; }}

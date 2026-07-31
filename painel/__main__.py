@@ -173,6 +173,27 @@ def _demo_board() -> dict:
                           "figure beside the text — so it composed a `group` with an "
                           "`image` in one column and this `markdown` in the other."},
              ]},
+            {"id": "h10", "type": "heading", "text": "Deadlines, ratings, tables, gauges (M2)"},
+            # countdown (§5.2): a live client-side countdown. A fixed deadline
+            # keeps the golden deterministic (no server clock is ever baked in).
+            {"id": "cd1", "type": "countdown", "label": "Submit the report by",
+             "deadline": "2026-12-31T17:00:00", "done": False},
+            # rating (§5.2): a 1..scale star picker with labelled endpoints.
+            {"id": "rt1", "type": "rating", "prompt": "How well did the email tone land?",
+             "scale": 5, "value": None, "labels": ["poor", "excellent"]},
+            # table (§5.2): read-only cells + an editable checkbox column, with a
+            # "Confirm table" button that sends the full rows back.
+            {"id": "tb1", "type": "table", "title": "Suspicious transactions",
+             "columns": [{"id": "date", "label": "Date"},
+                         {"id": "desc", "label": "Description"},
+                         {"id": "ok", "label": "Confirm?", "kind": "checkbox"}],
+             "rows": [{"date": "2026-06-03", "desc": "FX fee", "ok": False},
+                      {"date": "2026-06-07", "desc": "Duplicate charge", "ok": False}],
+             "editable": ["ok"], "confirmed": False},
+            # gauge (§5.2): one number that matters, read-only; past warn_at·max
+            # the bar and number turn warning-colored.
+            {"id": "gg1", "type": "gauge", "label": "Budget used", "value": 7350,
+             "max": 10000, "unit": "€", "warn_at": 0.8},
         ],
         "change_requests": [
             {"id": "cr1", "block": "pl", "text": "add a user-testing phase",
