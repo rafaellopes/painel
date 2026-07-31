@@ -1395,6 +1395,156 @@ human's own typed input (change requests, chat) — this is about the
 
 ---
 
+## 21. Adaptive layout & phase-awareness (M17) — full spec
+
+**Problem this solves, measured.** Boards have outgrown the single-column
+linear list they render as today. Across the real corpus: one board is
+37 000 chars of prose over 7 pages, an incident report is 23 000 chars in
+15 `note` blocks, a commercial proposal is 47 blocks over 8 pages. The
+*content* is sophisticated; the *presentation* is a fixed-width vertical
+scroll of stacked cards. A 23 000-char forensic report served as one long
+column is exactly the "lost in the chat" problem this project exists to
+solve, one level down.
+
+This milestone gives the **typed-block protocol** the two things it lacks —
+*layout expressiveness* and *a sense of the subject's maturity* — WITHOUT
+abandoning it for free-form agent-authored HTML. Free-form HTML was
+considered and rejected: it reintroduces XSS into boards that hold
+credentials (§17.6), and it destroys the typed protocol that is the
+project's actual moat (per docs/STRATEGY.md — the defensibility is the trust
+layer + protocol, not generative UI, which the big suites will commoditize).
+The sophisticated version worth building is **adaptive composition of typed
+blocks**, not arbitrary markup.
+
+Everything here is additive: a board that uses none of it renders exactly as
+it does today (pinned by test). Zero dependencies, agent composes it in JSON,
+fully server-rendered, `e()`-escaped like everything else — the §0
+constraints hold without exception.
+
+### 21.1 Layout containers (§3.1 additive)
+
+A container is a block whose job is to arrange *other* blocks, not to render
+content itself. One new block type, `group`, with a `layout` and nested
+`blocks`:
+
+```jsonc
+{ "id": "g1", "type": "group", "layout": "columns",
+  "title": "Evidence vs mechanism",           // optional section label
+  "blocks": [ { "id":"prova", "type":"note", ... },
+              { "id":"mec",   "type":"note", ... } ] }
+```
+
+- `layout`: `"columns"` (side-by-side, wraps to stacked under the §11.2
+  narrow-viewport breakpoint — reuse it, don't invent a second) or `"stack"`
+  (vertical, the default — a `group` with no layout is just a titled section).
+  Keep the set SMALL: `columns` and `stack` only in M17. No arbitrary grids,
+  no explicit column counts, no nesting deeper than **one** level (a `group`
+  may not contain a `group` — reject/flatten, and test it). Deeper layout is
+  a later milestone if a real board ever needs it; don't build it on spec.
+- Nested blocks render through the exact same `_block_html`/registry path as
+  top-level blocks — a `note` inside a `group` is the same `note`. IDs stay
+  globally unique across the whole board (the anchor/`#blk-<id>` and
+  `_needs_user` machinery must keep working for nested blocks — a pending
+  `question` inside a `group` still shows in the attention bar and is still
+  linkable). **This is the load-bearing integration test.**
+- `group` is host-agnostic chrome-ish but IS a registered block type (unlike
+  the directory/attention bar) because the agent composes it into `blocks[]`
+  and it carries content. It has no events, never pending itself; its
+  `needs_user()` recurses into its children.
+- Interaction with pages (§11): a `group`, like any block, may carry a
+  `page`. Its children inherit the parent's page (they do not carry their own
+  `page`; if one does, ignore it — the group owns placement).
+
+### 21.2 The hero / summary block (§3.1 additive)
+
+A single lead block that renders visually dominant — larger, full-width even
+inside a columns context, accent-bordered — for the one thing the human
+should read first ("Verdict: it's not the carrier"). Not a new block *type*:
+a boolean `"hero": true` on any existing block (typically `markdown` or
+`note`). At most one hero per page; if several are marked, only the first
+renders hero-styled (the rest fall back to normal), and that's a test.
+
+### 21.3 Progressive disclosure (§3.1 additive)
+
+Any block may carry `"collapsed": true` to render with its body hidden behind
+a native `<details>`/`<summary>` — the summary shows the block's title (or a
+short lead), the body expands on click. This is what lets a 23 000-char
+report show three lines and open on demand. Rules:
+
+- Uses native `<details>` — no JS, works with the existing reload discipline,
+  and (importantly) a block the human has expanded must STAY expanded across
+  the 2 s poll-reload. Persist open/closed in `sessionStorage` keyed by
+  `<slug>:<block-id>`, the same precedent as open plan-threads / CR boxes
+  (§6.4-adjacent). Do NOT add server state for it.
+- A block that is **pending on the human** (`_needs_user`) must **never**
+  start collapsed even if the agent marked it so — you cannot hide a
+  question behind a fold and still expect it answered. Force-expand pending
+  blocks and test it. (An interactive block *can* be collapsed once resolved;
+  the rule is specifically about open/pending ones.)
+- The attention bar and its anchor links must still reach a collapsed block:
+  clicking `#blk-<id>` for a collapsed block should scroll to it AND open it
+  (a tiny `:target`-triggered open, or JS on hashchange — your call, but it
+  must land the human *on the open content*, not on a closed summary).
+
+### 21.4 Phase-awareness (the "point of evolution")
+
+`meta.phase` — an optional, agent-set string reflecting where the subject
+stands: `"exploring" | "deciding" | "executing" | "done"`. The page's whole
+feel shifts with it, so a subject under exploration *looks* different from a
+decided or a finished one — this is the literal "de acordo com o ponto de
+evolução do assunto".
+
+- The shift is **restrained and CSS-only** — a phase changes the accent hue
+  and a density/emphasis token, NOT the layout or which blocks show. Concrete
+  and minimal: `exploring` → the working accent (current cyan), airy;
+  `deciding` → a warmer accent, slightly tighter, decisions/choices
+  emphasized; `executing` → progress-forward accent (green-leaning), plan/
+  tasks emphasized; `done` → muted/desaturated, a subtle "archived" wash.
+  Pick specific values, keep them tasteful, and make them read in BOTH light
+  and dark themes.
+- Absent `meta.phase` → today's look exactly, unchanged (backward-compat,
+  pinned by test). Do not infer phase from block states in M17 (deriving it
+  is tempting but easy to get wrong and hard to test; the agent sets it
+  explicitly, like `agent_status`). A small header affordance may *show* the
+  current phase (a quiet pill), reusing the M5 chip styling family — do not
+  add a picker; the agent owns it, mirroring `agent_status`.
+- `meta.phase` and `meta.agent_status` (§10) are orthogonal and coexist:
+  phase is where the *subject* is, agent_status is whose *turn* it is.
+
+### 21.5 Where it lives / how it's built
+
+- `group` is a normal block module (`painel/blocks/group.py`) — but it needs
+  to render children, so it either receives a render callback via `ctx` or
+  `server.py` special-cases container recursion in `_block_html`. Prefer the
+  cleaner of the two; document the choice. Whatever you pick, a `group`'s
+  children must go through the identical per-block pipeline (wrapper div,
+  `#blk-<id>`, needs-user marker, the generic ✎ change-request box) — no
+  second rendering path for nested blocks.
+- `hero`, `collapsed`, and `meta.phase` are page-shell/CSS concerns in
+  `page.py` + the render path, not per-block-module code (any block type gets
+  hero/collapsed for free from the generic wrapper, exactly as the
+  needs-user marker and the ✎ box already do — this is the same "build it
+  once in the wrapper" pattern used throughout).
+- The SKILL.md guidance is a legitimate agent-facing addition: teach WHEN to
+  reach for each (columns for genuinely parallel content like evidence-vs-
+  mechanism; hero for the one lead takeaway; collapsed for long reference
+  prose the human rarely needs open; phase to reflect where the work stands).
+  Warn against overuse — a board of five items needs none of this; these earn
+  their place only once a board is large, the same discipline as multi-page
+  (§11).
+
+### 21.6 Non-goals for M17
+
+No free-form/agent-authored HTML (the whole point — see the intro). No
+arbitrary grid or column-count control, no nested groups (§21.1). No
+client-side layout framework or JS layout engine — CSS grid/flex only. No
+phase *inference* from block state (§21.4). No per-block custom colors/themes
+(phase is the only thing that shifts the palette, board-wide). No animation
+beyond what already exists. Charts/data-viz remain out (that's the reserved
+`chart` block, §5.3, not this).
+
+---
+
 ## 9. Milestones for the implementing model
 
 | # | Deliverable | Acceptance |
@@ -1415,6 +1565,7 @@ human's own typed input (change requests, chat) — this is about the
 | **M14** | Navigation shell (§18): breadcrumb on every board page, persistent sidebar app-shell with a collapsible project switcher whose per-project pending badges travel across pages, current project+page highlighted | Breadcrumb links resolve (`/`, `/<slug>`, current page as text); the project switcher lists every registered project with correct pending badges matching the directory; single-board `serve` degrades cleanly (no `/` link, switcher shows only the current project); attention bar (this board) and switcher badges (other projects) stay distinct; page-shell chrome only, no block module, directory page unaffected; responsive collapse reuses the existing breakpoint |
 | **M15** | The `upload` block (§19): agent-composed drag/drop/pick zone writing to an agent-chosen `dest_dir` relative to the project, `POST /<slug>/upload`, `file_added` event, plus a global "📎 enviar ficheiros" affordance (`block:null` → `painel-uploads/`) | Dropping files writes them under the resolved dest and emits `file_added` to that board's own `<board>.log` (not silent); path containment refuses a `dest_dir`/filename escaping the project dir (400, no write); filenames sanitized + collision-suffixed never clobber; per-file size cap enforced; the global affordance needs no agent prompt so "where do I put this?" can't arise; loopback-only, no new network surface beyond `/event` |
 | **M16** | Block-choice lint (§20): `painel/lint.py` + `painel lint` CLI + an inline `⚠` at render time for `checklist` items that look like they need an answer | Flags **answer-shaped phrasing** (incident #3 and any `?`-ending item) and does NOT flag plain actions (login/download/publish/record) — both directions pinned by test; §20.5 records the two incident types this deliberately does NOT cover and why (widening the markers to force them would trade precision for noise, which §20.1 forbids); `painel lint` exits 1 when flagged, 0 when clean; the `⚠` never blocks rendering and its copy points at the per-item ❓; accent-insensitive matching reuses the existing NFKD fold; pure function over a board dict, no block-module hook, no dependencies |
+| **M17** | Adaptive layout & phase-awareness (§21): a `group` container (columns/stack, one level), a `hero` flag, per-block `collapsed` progressive disclosure, and `meta.phase` shifting the palette/emphasis | Additive — a board using none of it renders byte-identically to pre-M17 (pinned by test); a `question` nested in a `group` still appears in the attention bar and its `#blk-<id>` anchor still works; a pending block never starts collapsed; a collapsed block's anchor scrolls to it AND opens it; expanded state survives the poll-reload via sessionStorage; `meta.phase` absent → today's look unchanged; columns wrap to stacked at the existing narrow breakpoint; no nested groups; zero dependencies, CSS-only, all `e()`-escaped |
 
 **Suggested build order for a growing catalog:** M1 (already the
 foundation) → M5 and M6 can proceed in **either order relative to each
