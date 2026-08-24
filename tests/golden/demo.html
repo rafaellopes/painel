@@ -524,6 +524,20 @@ function reloadSoon(ok) { if (ok === false) return; knownVersion = null; setTime
         hdr.classList.add('dup-pulse');
         setTimeout(() => hdr.classList.remove('dup-pulse'), 3200);
       }
+      // M10.3 (docs/SPEC.md §14.3): the pulse alone is too easy to miss/lose
+      // among many open tabs, and once it fades there is no trace of which
+      // tab it was. Reuse M5's clickable Notification (maybeNotify below) --
+      // opportunistic only (never requests permission itself: a
+      // BroadcastChannel handler has no user gesture to request with), so
+      // this only fires if permission was already granted via the whose-turn
+      // flow. `tag` coalesces a burst of duplicate-open clicks into one
+      // notification instead of a pile of them.
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          const n = new Notification('👉 pAInel already open', {body: "pAInel — demo", tag: channelName});
+          n.onclick = () => { window.focus(); n.close(); };
+        } catch (e) {}
+      }
     } else if (msg.type === 'already-open' && !answered) {
       // I'm the newer tab -- someone answered my announce, so I'm the
       // duplicate. Show the notice, then self-close (only works for tabs

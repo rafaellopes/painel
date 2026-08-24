@@ -730,6 +730,40 @@ described three pending decisions in full prose in chat *and* had them as
 proper `choice`/`question` blocks — the duplication is what made the board
 feel optional).
 
+### 14.3 Findable dedup for heavy tab-hoarders (real-world gap in 14.1)
+
+**Problem this fixes:** §14.1's pulse alone turned out to be too weak for a
+real usage pattern — a human who habitually keeps dozens of tabs open across
+many projects. The reported failure: click a link, the new tab shows the
+"already open" notice and self-closes within 1.5s, and the surviving tab
+only pulses for 3.2s — far too short a window to spot among many tabs, and
+once it fades there is no remaining trace of *which* tab it was. The human
+is left knowing a duplicate exists but unable to locate it.
+
+**Fix: reuse M5's clickable OS Notification (§10.3), don't invent a second
+mechanism.** When the surviving tab receives an `'announce'` message (i.e. it
+is the original and a duplicate-open was just attempted elsewhere), it does
+everything §14.1 already does (pulse) **and**, opportunistically, fires a
+`Notification` exactly like `maybeNotify()` already does for the whose-turn
+signal: title along the lines of "👉 pAInel already open" with the board title
+as the body, `tag` set to the channel name (so a burst of duplicate clicks
+coalesces into one notification, not a pile of them), and `onclick =>
+window.focus()` — clicking it reliably brings that exact tab to the front,
+persists until dismissed (survives far longer than any CSS animation), and
+needs no new permission flow.
+
+This is **opportunistic, not a new prompt**: only fires when
+`Notification.permission === 'granted'` already (from the existing §10.3
+flow). A `BroadcastChannel` message handler on the surviving tab has no user
+gesture to request permission with, and firing an unsolicited permission
+popup from a background tab the instant another tab opens would be its own
+annoyance — so when permission was never granted, behavior is unchanged
+(pulse only), never worse than before §14.3.
+
+Non-goal: no attempt to scroll/highlight the tab in the browser's own tab
+strip (no web API exposes that); the Notification's click-to-focus is the
+platform-level equivalent and is sufficient.
+
 ---
 
 ## 15. The `resources` block (M11) — full spec

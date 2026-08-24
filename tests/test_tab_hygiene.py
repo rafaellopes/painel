@@ -108,6 +108,42 @@ class PulseReuseTest(unittest.TestCase):
         self.assertIn("hdr.classList.add('dup-pulse')", html)
 
 
+class FindableDedupNotificationTest(unittest.TestCase):
+    """M10.3 (docs/SPEC.md §14.3): the surviving tab also fires a clickable
+    Notification (reusing M5's mechanism, §10.3) when it detects a duplicate
+    open, so a heavy tab-hoarder can find the original after the 3.2s pulse
+    fades. Opportunistic only -- gated on Notification.permission already
+    being 'granted', never requests permission itself."""
+
+    def test_notification_fired_on_announce_gated_on_existing_permission(self):
+        html = srv.render(_simple_board())
+        self.assertIn("Notification.permission === 'granted'", html)
+        self.assertIn("new Notification('👉 pAInel already open'", html)
+
+    def test_notification_click_focuses_this_tab(self):
+        html = srv.render(_simple_board())
+        # Must appear inside the announce handler (dedup notification), not
+        # only in the pre-existing whose-turn maybeNotify() one -- both use
+        # window.focus() on click, so assert at least two occurrences.
+        self.assertGreaterEqual(html.count("window.focus()"), 2)
+
+    def test_notification_tag_coalesces_repeated_duplicate_clicks(self):
+        html = srv.render(_simple_board())
+        self.assertIn("tag: channelName", html)
+
+    def test_notification_carries_the_board_title_as_body(self):
+        html = srv.render(_simple_board())
+        self.assertIn("body: {board_title_js}".format(board_title_js='"Board"'), html)
+
+    def test_does_not_request_permission_itself(self):
+        """A BroadcastChannel handler on a background tab has no user gesture
+        to request permission with -- firing an unsolicited permission popup
+        the instant another tab opens would be its own annoyance. Only the
+        pre-existing whose-turn flow (§10.3) may call requestPermission()."""
+        html = srv.render(_simple_board())
+        self.assertEqual(html.count("requestPermission()"), 1)
+
+
 class ChannelKeysOnSlugTest(unittest.TestCase):
     """M13 (docs/SPEC.md §17.4), the bug this milestone had to fix while
     landing: M10 keyed the BroadcastChannel on location.port, which was right
