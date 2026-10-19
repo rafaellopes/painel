@@ -91,9 +91,16 @@ def save_board(path: str, board: dict) -> None:
 
 
 def _find(board: dict, block_id: str) -> dict | None:
+    # Blocks nested in a `group` (M17, §21.1) receive events too: without
+    # descending into groups, an answer to a grouped question was logged to
+    # the agent but never saved, so the page kept showing it as unanswered.
     for b in board.get("blocks", []):
         if str(b.get("id")) == str(block_id):
             return b
+        if b.get("type") == _group.TYPE:
+            for c in _group.child_blocks(b):
+                if str(c.get("id")) == str(block_id):
+                    return c
     return None
 
 
@@ -619,6 +626,10 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     # a quiet header pill shows it, there is no picker.
     phase = meta.get("phase") if meta.get("phase") in _PHASES else None
     body_class = "has-nav" + (f" phase-{phase}" if phase else "")
+    # meta.layout == "wide": use the whole browser width -- big tables and
+    # side-by-side mockups stop scrolling sideways inside a 1040px column.
+    if meta.get("layout") == "wide":
+        body_class += " wide"
     phase_pill = (f'<span class="status-chip phase-pill phase-pill-{phase}">'
                   f'{e(_PHASE_LABELS[phase])}</span>') if phase else ""
     metaline = " · ".join(
@@ -663,8 +674,21 @@ def render(board: dict, active_page=None, base_path: str = "", slug: str | None 
     switcher = _switcher_html(board, slug, entries)
     breadcrumb = _breadcrumb_html(board, active_page, base_path, service_mode)
     nav = f'<aside class="app-shell">{switcher}{page_list}</aside>'
+    # The sticky project bar (§18.5): which project you are in has to survive
+    # scrolling. The full <header> scrolls away on a long board, and the only
+    # other mention of the project was small muted text in the metaline -- so
+    # deep in a long page there was nothing on screen naming the project.
+    # Falls back to the board title when meta.project is absent.
+    proj_name = meta.get("project") or board_title
+    project_bar = (
+        '<div id="projbar"><span class="proj-name">' + e(proj_name) + "</span>"
+        + (f'<span class="proj-sep">›</span><span class="proj-page">{e(active_page)}</span>'
+           if active_page else "")
+        + "</div>"
+    )
     return _PAGE.format(
         title=e(title_text), metaline=metaline, attention=attention,
+        project_bar=project_bar,
         breadcrumb=breadcrumb, phase_pill=phase_pill,
         nav=nav, nav_class=f' class="{body_class}"',
         page_shell_open='<div class="page-shell">', page_shell_close="</div>\n",

@@ -77,7 +77,7 @@ body {{ margin:0; padding:2rem 1.25rem; background:var(--bg); color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif;
   line-height:1.5; max-width:780px; margin-inline:auto; }}
 header {{ margin-bottom:1.25rem; }}
-h1 {{ font-size:1.35rem; margin:0 0 .2rem; letter-spacing:-.01em; }}
+h1 {{ font-size:1.6rem; margin:0 0 .2rem; letter-spacing:-.01em; }}
 h1 .ai {{ color:var(--accent); }}
 .metaline {{ color:var(--muted); font-size:.82rem; }}
 h2.section {{ font-size:.78rem; text-transform:uppercase; letter-spacing:.07em;
@@ -163,9 +163,21 @@ button.no {{ background:var(--blocked); color:#2a0a0a; margin-left:.5rem; }}
   background:var(--wip); color:#1a1a1a; font-size:.68rem; font-weight:700;
   letter-spacing:.02em; padding:.15rem .55rem; border-radius:999px; z-index:1;
 }}
-.attention {{ position:sticky; top:0; z-index:10; background:var(--wip); color:#1a1a1a;
-  padding:.55rem .9rem; border-radius:0 0 10px 10px; font-size:.88rem; font-weight:500;
-  margin:-2rem -1.25rem 1.2rem; box-shadow:0 2px 8px rgba(0,0,0,.25); }}
+/* The sticky top strip. Both the project bar and the attention bar live
+   INSIDE it, so they stack naturally with no per-bar `top:` offset math --
+   the attention bar's height varies with how many links wrap onto it, which
+   made a second independently-sticky bar below it unreliable. The strip
+   carries the negative margins the attention bar used to carry itself. */
+#topbar {{ position:sticky; top:0; z-index:20; margin:-2rem -1.25rem 1.2rem;
+  box-shadow:0 2px 8px rgba(0,0,0,.25); border-radius:0 0 10px 10px; overflow:hidden; }}
+#topbar:empty {{ display:none; box-shadow:none; margin:0; }}
+#projbar {{ background:var(--card); border-bottom:1px solid var(--border);
+  padding:.5rem .95rem; display:flex; align-items:baseline; gap:.45rem; flex-wrap:wrap; }}
+#projbar .proj-name {{ font-size:1.05rem; font-weight:600; letter-spacing:-.01em; }}
+#projbar .proj-sep {{ color:var(--muted); opacity:.6; }}
+#projbar .proj-page {{ font-size:.95rem; color:var(--muted); }}
+.attention {{ background:var(--wip); color:#1a1a1a;
+  padding:.55rem .9rem; font-size:.88rem; font-weight:500; }}
 .attention a {{ color:inherit; text-decoration:underline; font-weight:400; }}
 .attention-count {{ display:inline-block; background:#1a1a1a; color:var(--wip);
   border-radius:50%; min-width:1.4rem; height:1.4rem; line-height:1.4rem;
@@ -180,6 +192,8 @@ button.ico.has-reply {{ color:var(--accent); border-color:var(--accent);
    Immediate confirmation that a click was received and is in flight, so a
    slow or failed round-trip never looks like a dead button. Works on every
    action button generically (small icon buttons and the wider text ones). */
+.card.just-answered {{ outline:2px solid #16a34a; outline-offset:2px; transition:outline-color .2s; }}
+button.chosen {{ background:#16a34a !important; color:#fff !important; border-color:#16a34a !important; }}
 button.sending {{ position:relative; color:transparent !important; pointer-events:none; }}
 button.sending::after {{ content:''; position:absolute; inset:0; margin:auto;
   width:11px; height:11px; border:2px solid var(--border);
@@ -255,6 +269,7 @@ ul.res-list li.res-item:last-child {{ border-bottom:none; }}
 ul.res-list a {{ color:var(--accent); text-decoration:underline; }}
 /* --- Multi-page nav (M6, docs/SPEC.md §11) --- */
 body.has-nav {{ max-width:1040px; }}
+body.wide, body.has-nav.wide {{ max-width:none; }}
 .page-shell {{ display:flex; gap:2rem; align-items:flex-start; }}
 .page-main {{ flex:1; min-width:0; }}
 .pages-nav {{ flex:none; width:190px; }}
@@ -368,10 +383,12 @@ button.star:hover {{ filter:none; }}
 .table-scroll {{ overflow-x:auto; margin:.2rem 0 .4rem; }}
 table.data-table {{ border-collapse:collapse; width:100%; font-size:.86rem; }}
 table.data-table th, table.data-table td {{ text-align:left; padding:.35rem .55rem;
-  border-bottom:1px solid var(--border); vertical-align:middle; white-space:nowrap; }}
+  border-bottom:1px solid var(--border); vertical-align:top; white-space:normal;
+  overflow-wrap:anywhere; }}
+table.data-table th {{ white-space:nowrap; }}
 table.data-table th {{ color:var(--muted); text-transform:uppercase; font-size:.66rem;
   letter-spacing:.06em; }}
-table.data-table td input[type=text] {{ width:auto; min-width:8ch; margin:0; padding:.25rem .4rem; }}
+table.data-table td input[type=text] {{ width:100%; min-width:8ch; margin:0; padding:.25rem .4rem; box-sizing:border-box; }}
 table.data-table td input[type=checkbox] {{ width:16px; height:16px; margin:0;
   accent-color:var(--accent); }}
 .gauge-value {{ margin:.1rem 0 .3rem; }}
@@ -391,7 +408,7 @@ table.data-table td input[type=checkbox] {{ width:16px; height:16px; margin:0;
 }}
 </style></head><body{nav_class}>
 <div id="dup-notice">👉 you already have this pAInel open — closing this tab</div>
-{attention}
+<div id="topbar">{project_bar}{attention}</div>
 {breadcrumb}
 <header id="page-header">
   <h1>{title}</h1>
@@ -435,6 +452,14 @@ async function send(payload) {{
     const r = await fetch(basePath + '/event', {{method:'POST',
       headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(payload)}});
     if (!r.ok) throw new Error('HTTP ' + r.status);
+    // Show the answer as given right away, before the reload lands: the card
+    // turns "answered" and the clicked button is marked, so a slow reload never
+    // looks like the click was lost.
+    if (btn) {{
+      btn.classList.remove('sending'); btn.classList.add('chosen');
+      const card = btn.closest('.card');
+      if (card) card.classList.add('answered', 'just-answered');
+    }}
     return true;   // success -> caller's reloadSoon replaces the whole page
   }} catch (e) {{
     if (btn) {{

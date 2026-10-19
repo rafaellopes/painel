@@ -46,7 +46,13 @@ def _static_cell(col: dict, value) -> str:
 
 def _static_table(block: dict) -> str:
     cols = _columns(block)
-    head = "".join(f"<th>{e(c.get('label', ''))}</th>" for c in cols)
+    # Optional per-column "width" (e.g. "18%"): long text wraps inside it
+    # instead of pushing the grid into a horizontal scroll.
+    head = "".join(
+        (f'<th style="width:{e(str(c["width"]))}">' if c.get("width") else "<th>")
+        + f"{e(c.get('label', ''))}</th>"
+        for c in cols
+    )
     body_rows = []
     for row in block.get("rows", []):
         cells = "".join(
@@ -76,7 +82,13 @@ def render(block: dict, ctx: dict) -> str:
 
     cols = _columns(block)
     editable = set(block.get("editable", []) or [])
-    head = "".join(f"<th>{e(c.get('label', ''))}</th>" for c in cols)
+    # Optional per-column "width" (e.g. "18%"): long text wraps inside it
+    # instead of pushing the grid into a horizontal scroll.
+    head = "".join(
+        (f'<th style="width:{e(str(c["width"]))}">' if c.get("width") else "<th>")
+        + f"{e(c.get('label', ''))}</th>"
+        for c in cols
+    )
     body_rows = []
     for row in block.get("rows", []):
         cells = []

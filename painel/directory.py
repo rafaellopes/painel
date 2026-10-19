@@ -89,6 +89,7 @@ def _shell(title: str, cards: str) -> str:
     their own slug (§17.4)."""
     return _PAGE.format(
         title=e(title), metaline="", attention="",
+        project_bar="",  # the directory is not a board -- no project to pin
         # M14 (§18): the directory IS the top of the hierarchy -- it gets no
         # board-shell breadcrumb and no project switcher (§18.4).
         breadcrumb="", phase_pill="",  # host-app chrome: no board phase (M17, §21.4)
