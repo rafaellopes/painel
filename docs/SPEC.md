@@ -730,39 +730,53 @@ described three pending decisions in full prose in chat *and* had them as
 proper `choice`/`question` blocks — the duplication is what made the board
 feel optional).
 
-### 14.3 Findable dedup for heavy tab-hoarders (real-world gap in 14.1)
+### 14.3 Findable dedup — superseded by §14.4
 
-**Problem this fixes:** §14.1's pulse alone turned out to be too weak for a
-real usage pattern — a human who habitually keeps dozens of tabs open across
-many projects. The reported failure: click a link, the new tab shows the
-"already open" notice and self-closes within 1.5s, and the surviving tab
-only pulses for 3.2s — far too short a window to spot among many tabs, and
-once it fades there is no remaining trace of *which* tab it was. The human
-is left knowing a duplicate exists but unable to locate it.
+M10.3 fired a clickable OS Notification from the surviving tab so it could be
+found after the pulse faded. It depended on `Notification.permission` already
+being `granted`, which in practice it was not — so it never fired for the user
+who reported the problem, and the hunt continued. Removed in §14.4, which
+removes the need to find anything at all.
 
-**Fix: reuse M5's clickable OS Notification (§10.3), don't invent a second
-mechanism.** When the surviving tab receives an `'announce'` message (i.e. it
-is the original and a duplicate-open was just attempted elsewhere), it does
-everything §14.1 already does (pulse) **and**, opportunistically, fires a
-`Notification` exactly like `maybeNotify()` already does for the whose-turn
-signal: title along the lines of "👉 pAInel already open" with the board title
-as the body, `tag` set to the channel name (so a burst of duplicate clicks
-coalesces into one notification, not a pile of them), and `onclick =>
-window.focus()` — clicking it reliably brings that exact tab to the front,
-persists until dismissed (survives far longer than any CSS animation), and
-needs no new permission flow.
+### 14.4 The newest tab wins (M10.4) — the inversion
 
-This is **opportunistic, not a new prompt**: only fires when
-`Notification.permission === 'granted'` already (from the existing §10.3
-flow). A `BroadcastChannel` message handler on the surviving tab has no user
-gesture to request permission with, and firing an unsolicited permission
-popup from a background tab the instant another tab opens would be its own
-annoyance — so when permission was never granted, behavior is unchanged
-(pulse only), never worse than before §14.3.
+**The failure §14.1 actually produced.** M10.1 kept the OLDEST tab and closed
+the NEWEST, pulsing the survivor to draw the eye. For a human who habitually
+keeps dozens of tabs open this is exactly backwards: the tab that dies is the
+one they are looking at, and the survivor is buried somewhere in a tab strip
+of fifty. Reported twice from real use — "muitas vezes não encontro a aba
+aberta… perco muito tempo tentando encontrar" — with a standing request to
+remove the feature entirely if it could not be fixed. The feature was costing
+more time than the duplicate tab it prevented.
 
-Non-goal: no attempt to scroll/highlight the tab in the browser's own tab
-strip (no web API exposes that); the Notification's click-to-focus is the
-platform-level equivalent and is sufficient.
+**Why "just focus the other tab" is not reachable.** No web API can focus a
+different tab: `window.focus()` from a background document is blocked by every
+modern browser, and nothing can scroll or highlight the browser's own tab
+strip. §14.3 tried the one indirect route (a Notification whose click focuses
+its originating tab) and it proved too conditional to rely on.
+
+**The fix: invert the rule.** The tab born LATEST wins, because it is the one
+that already has focus — the one the human just clicked a link to open. The
+older duplicate retires itself. There is then nothing to find: clicking a link
+always lands on a working board in the tab in front of you, and the buried
+duplicate quietly disappears.
+
+- Each tab announces `{type:'hello', birth, id}` once on load. A tab that
+  hears a `hello` with a LATER `birth` retires. Ties break on `id`, so two
+  tabs opened in the same millisecond can never both retire.
+- The winning tab does nothing at all: no notice, no pulse, no interruption.
+  Dedup becomes invisible, which is the point.
+- **Retiring is not always closing.** `window.close()` only works on
+  script-opened tabs. A retiring tab always sets `tabRetired`, which stops its
+  `/version` polling and its whose-turn notifications, and shows a notice. If
+  the browser refuses to close it, it stays — inert and visibly labelled, so
+  it can never be mistaken for a live board later.
+- **Never close over unsent text.** If the retiring tab is mid-edit
+  (`isBusy()`, the same guard the reload poller uses), it does not close at
+  all; it only goes inert and labelled, so the human's typing survives.
+- **The channel keys on board AND page** (`location.pathname`), so two pages
+  of the same project can be open side by side. Only genuinely identical tabs
+  dedupe — a project page and its sub-page are not duplicates.
 
 ---
 

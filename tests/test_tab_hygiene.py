@@ -44,17 +44,20 @@ class BroadcastChannelSetupTest(unittest.TestCase):
         self.assertNotIn('"painel-8765"', html)
         self.assertNotIn("'painel-8765'", html)
 
-    def test_announce_and_already_open_protocol_present(self):
+    def test_hello_protocol_present(self):
+        """M10.4 (§14.4): one-shot `hello` carrying birth+id. The old
+        announce/already-open handshake is gone -- the newest tab now simply
+        wins and the older one retires, so no reply is needed."""
         html = srv.render(_simple_board())
-        self.assertIn("type: 'announce'", html)
-        self.assertIn("type === 'announce'", html)
-        self.assertIn("type: 'already-open'", html)
-        self.assertIn("type === 'already-open'", html)
+        self.assertIn("type: 'hello'", html)
+        self.assertIn("type !== 'hello'", html)
+        self.assertNotIn("already-open", html)
 
     def test_duplicate_notice_element_and_copy_present(self):
         html = srv.render(_simple_board())
         self.assertIn('id="dup-notice"', html)
-        self.assertIn("you already have this pAInel open — closing this tab", html)
+        # Copy must not promise closing: a mid-edit tab deliberately stays.
+        self.assertIn("this pAInel moved to the tab you just opened", html)
 
     def test_window_close_called_on_duplicate(self):
         html = srv.render(_simple_board())
@@ -91,57 +94,46 @@ class PulseReuseTest(unittest.TestCase):
             self.assertNotIn("box-shadow:0 0 0", block,
                              f"@keyframes {name} looks like a duplicate of pulse")
 
-    def test_dup_pulse_class_uses_the_shared_pulse_animation(self):
+class NewestTabWinsTest(unittest.TestCase):
+    """M10.4 (docs/SPEC.md §14.4): the tab born LATEST wins, because it is the
+    one that already has focus. The older duplicate retires. This inverts
+    M10.1, which kept the oldest and closed the newest -- the behaviour that
+    left the user hunting through dozens of tabs for the survivor."""
+
+    def test_retirement_is_decided_by_birth_with_an_id_tiebreak(self):
         html = srv.render(_simple_board())
-        self.assertIn("header.dup-pulse", html)
-        self.assertIn("animation:pulse", html)
+        self.assertIn("msg.birth > myBirth", html)
+        self.assertIn("msg.id > myId", html)
 
-    def test_new_js_applies_dup_pulse_to_page_header(self):
-        """The reused animation is applied by the new JS via the 'dup-pulse'
-        class toggled on the page header element (id="page-header"), which
-        this milestone introduces as the visible target for the pulse --
-        plan.py's own reply-dot pulse targets a different element (the ✎
-        button), so this is a new, sensibly-named class reusing the same
-        keyframes rather than the same selector."""
+    def test_newer_tab_does_nothing(self):
+        """The winner must not interrupt: no notice, no pulse, just work."""
         html = srv.render(_simple_board())
-        self.assertIn('id="page-header"', html)
-        self.assertIn("hdr.classList.add('dup-pulse')", html)
+        self.assertIn("if (!theyAreNewer) return;", html)
 
-
-class FindableDedupNotificationTest(unittest.TestCase):
-    """M10.3 (docs/SPEC.md §14.3): the surviving tab also fires a clickable
-    Notification (reusing M5's mechanism, §10.3) when it detects a duplicate
-    open, so a heavy tab-hoarder can find the original after the 3.2s pulse
-    fades. Opportunistic only -- gated on Notification.permission already
-    being 'granted', never requests permission itself."""
-
-    def test_notification_fired_on_announce_gated_on_existing_permission(self):
+    def test_retired_tab_stops_polling(self):
+        """A superseded tab that the browser refuses to close must go inert,
+        never reload, so it cannot be mistaken for a live board later."""
         html = srv.render(_simple_board())
-        self.assertIn("Notification.permission === 'granted'", html)
-        self.assertIn("new Notification('👉 pAInel already open'", html)
+        self.assertIn("if (tabRetired) return;", html)
 
-    def test_notification_click_focuses_this_tab(self):
+    def test_mid_edit_tab_is_never_closed(self):
+        """Never close over unsent text -- reuses the reload poller's own
+        isBusy() guard."""
         html = srv.render(_simple_board())
-        # Must appear inside the announce handler (dedup notification), not
-        # only in the pre-existing whose-turn maybeNotify() one -- both use
-        # window.focus() on click, so assert at least two occurrences.
-        self.assertGreaterEqual(html.count("window.focus()"), 2)
+        self.assertIn("if (isBusy()) return;", html)
 
-    def test_notification_tag_coalesces_repeated_duplicate_clicks(self):
+    def test_no_notification_is_fired_for_duplicates(self):
+        """M10.3's Notification is gone (§14.3): it depended on a permission
+        that was not granted in practice, so it never fired. The only
+        remaining Notification is M5's whose-turn one."""
         html = srv.render(_simple_board())
-        self.assertIn("tag: channelName", html)
+        self.assertNotIn("pAInel already open", html)
+        self.assertEqual(html.count("new Notification("), 1)
 
-    def test_notification_carries_the_board_title_as_body(self):
+    def test_channel_keys_on_the_page_too(self):
+        """Two pages of one project are not duplicates of each other."""
         html = srv.render(_simple_board())
-        self.assertIn("body: {board_title_js}".format(board_title_js='"Board"'), html)
-
-    def test_does_not_request_permission_itself(self):
-        """A BroadcastChannel handler on a background tab has no user gesture
-        to request permission with -- firing an unsolicited permission popup
-        the instant another tab opens would be its own annoyance. Only the
-        pre-existing whose-turn flow (§10.3) may call requestPermission()."""
-        html = srv.render(_simple_board())
-        self.assertEqual(html.count("requestPermission()"), 1)
+        self.assertIn("+ '|' + location.pathname", html)
 
 
 class ChannelKeysOnSlugTest(unittest.TestCase):
@@ -154,7 +146,7 @@ class ChannelKeysOnSlugTest(unittest.TestCase):
 
     def test_service_rendered_board_keys_the_channel_on_its_slug(self):
         html = srv.render(_simple_board(), base_path="/livrete", slug="livrete")
-        self.assertIn("""const channelName = 'painel-' + "livrete";""", html)
+        self.assertIn("""const channelName = 'painel-' + "livrete" + '|' + location.pathname;""", html)
         # The port must play no part in a service-served board's channel name.
         self.assertNotIn("'painel-' + (location.port", html)
 
@@ -166,14 +158,15 @@ class ChannelKeysOnSlugTest(unittest.TestCase):
         self.assertNotIn("proj-b", a)
         self.assertNotIn("proj-a", b)
 
-    def test_same_board_on_two_pages_shares_one_channel_name(self):
-        """The flip side: two tabs of the SAME board must still dedupe, which
-        is the whole feature. Different page, same slug, same channel."""
+    def test_same_board_two_pages_are_not_duplicates(self):
+        """M10.4 (§14.4) narrows this: the channel keys on board AND page via
+        location.pathname, so a project page and its sub-page can be open side
+        by side. Only genuinely identical tabs dedupe."""
         home = srv.render(_simple_board(), base_path="/livrete", slug="livrete")
         page = srv.render(_simple_board(), base_path="/livrete", slug="livrete",
                           active_page="Estratégia")
-        self.assertIn("""'painel-' + "livrete";""", home)
-        self.assertIn("""'painel-' + "livrete";""", page)
+        self.assertIn("""'painel-' + "livrete" + '|'""", home)
+        self.assertIn("""'painel-' + "livrete" + '|'""", page)
 
     def test_slug_is_json_escaped_into_the_script_body(self):
         """Same rule as every other value templated into <script> (§1's

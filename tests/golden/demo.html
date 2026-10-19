@@ -146,11 +146,9 @@ button.send-error { color:var(--blocked) !important; border-color:var(--blocked)
   animation:shake .3s ease-in-out; }
 @keyframes shake { 0%,100% { transform:translateX(0); }
   25% { transform:translateX(-2px); } 75% { transform:translateX(2px); } }
-/* --- Tab hygiene (M10, docs/SPEC.md §14.1) -- duplicate-tab self-close ---
-   The surviving/original tab reuses the exact same `pulse` keyframes above
-   (not a second, near-duplicate animation) applied to the header, so a
-   duplicate-open attempt draws the eye without any new CSS. */
-header.dup-pulse { animation:pulse 1.6s ease-in-out infinite; border-radius:10px; }
+/* --- Tab hygiene (M10, docs/SPEC.md §14.4) -- the newest tab wins. The old
+   dup-pulse on the survivor is gone with M10.1: the survivor is now the tab
+   the human is already looking at, so there is nothing to draw the eye to. */
 #dup-notice { display:none; position:fixed; top:1rem; left:50%; transform:translateX(-50%);
   background:var(--wip); color:#1a1a1a; padding:.6rem 1.1rem; border-radius:10px;
   font-size:.88rem; font-weight:600; box-shadow:0 4px 14px rgba(0,0,0,.3); z-index:100; }
@@ -349,7 +347,7 @@ table.data-table td input[type=checkbox] { width:16px; height:16px; margin:0;
   .group-cols > div { flex-basis:auto; }
 }
 </style></head><body class="has-nav phase-exploring">
-<div id="dup-notice">👉 you already have this pAInel open — closing this tab</div>
+<div id="dup-notice">👉 this pAInel moved to the tab you just opened</div>
 <div id="topbar"><div id="projbar"><span class="proj-name">demo</span></div><div class="attention"><span class="attention-count">9</span> waiting on you: <a href="/#blk-cl">3 manual steps to check off</a> · <a href="/#blk-q1">Question to answer</a> · <a href="/#blk-ch">Choice pending</a> · <a href="/#blk-ap">Approval pending</a> · <a href="/#blk-fm">Form to fill in</a> · <a href="/#blk-up1">Drag your screenshots here (.png, .jpg)</a> · <a href="/#blk-cd1">Submit the report by</a> · <a href="/#blk-rt1">Rating pending</a> · <a href="/#blk-tb1">Suspicious transactions</a></div></div>
 <div class="breadcrumb"><span class="crumb-current">pAInel — demo</span></div>
 <header id="page-header">
@@ -533,49 +531,47 @@ function reloadSoon(ok) { if (ok === false) return; knownVersion = null; setTime
 // the board's slug into the expression below, while single-board `painel
 // serve` keeps the original port-derived one verbatim, since there the port
 // genuinely still is the instance identity (docs/SPEC.md §17.4).
+// A retired tab stops polling and stops acting; see M10.4 below.
+let tabRetired = false;
+
+// M10.4 (§14.4) INVERTS what M10.1 did, after the original behaviour failed in
+// real use. M10.1 kept the OLDEST tab and closed the NEWEST, pulsing the
+// survivor to "draw the eye". For a human who keeps dozens of tabs open that
+// is exactly backwards: the tab that dies is the one they are looking at, and
+// the survivor is buried somewhere in the strip. The reported failure was
+// having to hunt for it every time, so the feature cost more time than the
+// duplicate it prevented. No web API can focus another tab (window.focus()
+// from a background tab is blocked, and nothing can scroll the tab strip), so
+// "help them find it" is not reachable. Keeping the tab that already HAS focus
+// is -- and then there is nothing to find.
+//
+// The channel identifies the board AND the page (location.pathname), so two
+// pages of the same project can be open side by side; only genuinely identical
+// tabs dedupe.
 (function() {
   if (typeof BroadcastChannel === 'undefined') return;  // graceful no-op on ancient browsers
-  const channelName = 'painel-' + (location.port || '80');
+  const channelName = 'painel-' + (location.port || '80') + '|' + location.pathname;
   const bc = new BroadcastChannel(channelName);
-  let answered = false;
+  const myBirth = Date.now();
+  const myId = Math.random().toString(36).slice(2);
   bc.onmessage = (ev) => {
     const msg = ev.data || {};
-    if (msg.type === 'announce') {
-      // Someone else just opened a tab for this same instance -- I was here
-      // first, so I reply to say so, and pulse to draw the eye.
-      bc.postMessage({type: 'already-open'});
-      const hdr = document.getElementById('page-header');
-      if (hdr) {
-        hdr.classList.add('dup-pulse');
-        setTimeout(() => hdr.classList.remove('dup-pulse'), 3200);
-      }
-      // M10.3 (docs/SPEC.md §14.3): the pulse alone is too easy to miss/lose
-      // among many open tabs, and once it fades there is no trace of which
-      // tab it was. Reuse M5's clickable Notification (maybeNotify below) --
-      // opportunistic only (never requests permission itself: a
-      // BroadcastChannel handler has no user gesture to request with), so
-      // this only fires if permission was already granted via the whose-turn
-      // flow. `tag` coalesces a burst of duplicate-open clicks into one
-      // notification instead of a pile of them.
-      if ('Notification' in window && Notification.permission === 'granted') {
-        try {
-          const n = new Notification('👉 pAInel already open', {body: "pAInel — demo", tag: channelName});
-          n.onclick = () => { window.focus(); n.close(); };
-        } catch (e) {}
-      }
-    } else if (msg.type === 'already-open' && !answered) {
-      // I'm the newer tab -- someone answered my announce, so I'm the
-      // duplicate. Show the notice, then self-close (only works for tabs
-      // opened by script, e.g. webbrowser.open() from `painel open`/hub --
-      // if the browser refuses for a manually-typed URL, window.close() is
-      // a silent no-op and the notice just stays up; no retry/workaround).
-      answered = true;
-      const notice = document.getElementById('dup-notice');
-      if (notice) notice.style.display = 'block';
-      setTimeout(() => { window.close(); }, 1500);
-    }
+    if (msg.type !== 'hello' || tabRetired) return;
+    // Someone else loaded this same board+page. Whoever was born later wins
+    // (they are the tab the human just opened and is looking at). Ties are
+    // broken on id so two tabs opened in the same millisecond can never both
+    // retire -- exactly one of them steps aside.
+    const theyAreNewer = msg.birth > myBirth || (msg.birth === myBirth && msg.id > myId);
+    if (!theyAreNewer) return;  // I'm the newer one: do nothing, just work.
+    tabRetired = true;
+    const notice = document.getElementById('dup-notice');
+    if (notice) notice.style.display = 'block';
+    // Mid-edit: never close over the human's unsent text. The tab goes inert
+    // and visibly labelled instead, so it cannot be mistaken for live later.
+    if (isBusy()) return;
+    setTimeout(() => { window.close(); }, 1200);
   };
-  bc.postMessage({type: 'announce'});
+  bc.postMessage({type: 'hello', birth: myBirth, id: myId});
 })();
 
 // --- Change requests (M8, docs/SPEC.md §12) ---------------------------------
@@ -916,6 +912,7 @@ updateWhoseTurn(pendingCount, agentStatus, hasResolved);
 
 let knownVersion = null;
 async function poll() {
+  if (tabRetired) return;   // M10.4: a superseded tab goes quiet, never reloads
   try {
     const r = await fetch(basePath + '/version', {cache:'no-store'});
     const data = await r.json();
